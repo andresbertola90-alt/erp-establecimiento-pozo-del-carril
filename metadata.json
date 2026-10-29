@@ -1,0 +1,7 @@
+{
+  "name": "Establecimiento Pozo del Carril - UNRC",
+  "description": "Sistema de gestión contable, agrícola y porcina del Establecimiento Pozo del Carril de la Universidad Nacional de Río Cuarto (UNRC).",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

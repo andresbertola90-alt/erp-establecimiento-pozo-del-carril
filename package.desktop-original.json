@@ -1,0 +1,94 @@
+{
+  "name": "pozo-del-carril-unrc",
+  "version": "1.4.0",
+  "private": true,
+  "description": "Sistema contable y productivo del Establecimiento Pozo del Carril - UNRC",
+  "author": "Alumnos de la Facultad de Ciencias Economicas, UNRC",
+  "main": "desktop/main.cjs",
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/domain.test.cjs tests/transfer.test.cjs tests/desktop-policy.test.cjs tests/journal-audit.test.cjs tests/workflow.test.cjs tests/account-plan.test.cjs",
+    "desktop:pack": "electron-builder --win --x64 --dir",
+    "desktop:build": "electron-builder --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3",
+    "exceljs": "4.4.0"
+  },
+  "build": {
+    "appId": "ar.edu.unrc.pozodelcarril.gestion",
+    "productName": "Pozo del Carril UNRC",
+    "directories": {
+      "output": "dist",
+      "buildResources": "desktop/build"
+    },
+    "files": [
+      "index.html",
+      "styles.css",
+      "integrated.css",
+      "access-print.css",
+      "journal-audit.css",
+      "journal.js",
+      "journal-ui.js",
+      "audit.js",
+      "audit-ui.js",
+      "domain.js",
+      "storage.js",
+      "auth.js",
+      "interface.js",
+      "access-ui.js",
+      "printing.js",
+      "transfer.js",
+      "transfer-ui.js",
+      "desktop-ui.js",
+      "assets/**",
+      "desktop/main.cjs",
+      "desktop/preload.cjs",
+      "desktop/policy.cjs",
+      "desktop/build/icon.ico",
+      "package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": "desktop/LEEME.txt",
+        "to": "LEEME.txt"
+      }
+    ],
+    "asar": true,
+    "electronLanguages": [
+      "es",
+      "es-419",
+      "en-US"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "desktop/build/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pozo del Carril UNRC",
+      "installerLanguages": [
+        "es_ES"
+      ],
+      "language": "1034",
+      "runAfterFinish": false,
+      "artifactName": "Pozo-del-Carril-UNRC-${version}-Instalador-Windows-x64.${ext}"
+    }
+  }
+}

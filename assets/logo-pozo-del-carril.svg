@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="purpleGrad" x1="0%" y1="100%" x2="50%" y2="0%">
+      <stop offset="0%" stop-color="#581c87" />
+      <stop offset="50%" stop-color="#7e22ce" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+    <linearGradient id="greenGrad" x1="100%" y1="100%" x2="50%" y2="0%">
+      <stop offset="0%" stop-color="#14532d" />
+      <stop offset="50%" stop-color="#16a34a" />
+      <stop offset="100%" stop-color="#4ade80" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#d97706" />
+      <stop offset="100%" stop-color="#facc15" />
+    </linearGradient>
+  </defs>
+
+  <!-- Center Gold Sprout / Flame -->
+  <path d="M60 18 C57 26 54 36 60 48 C66 36 63 26 60 18 Z" fill="url(#goldGrad)" />
+
+  <!-- Left Purple Petals -->
+  <!-- Outer left petal -->
+  <path d="M57 96 C42 94 14 82 8 58 C6 48 10 38 18 36 C18 48 30 68 56 84 C56.8 88 57 92 57 96 Z" fill="url(#purpleGrad)" opacity="0.95" />
+  <!-- Middle left petal -->
+  <path d="M58 88 C46 80 24 64 22 46 C22 36 28 30 35 28 C34 38 42 56 58 74 Z" fill="url(#purpleGrad)" />
+  <!-- Inner left petal -->
+  <path d="M59 78 C52 70 42 56 44 42 C44 34 49 28 54 28 C53 36 56 48 59 66 Z" fill="url(#purpleGrad)" />
+
+  <!-- Right Green Petals -->
+  <!-- Outer right petal -->
+  <path d="M63 96 C78 94 106 82 112 58 C114 48 110 38 102 36 C102 48 90 68 64 84 C63.2 88 63 92 63 96 Z" fill="url(#greenGrad)" opacity="0.95" />
+  <!-- Middle right petal -->
+  <path d="M62 88 C74 80 96 64 98 46 C98 36 92 30 85 28 C86 38 78 56 62 74 Z" fill="url(#greenGrad)" />
+  <!-- Inner right petal -->
+  <path d="M61 78 C68 70 78 56 76 42 C76 34 71 28 66 28 C67 36 64 48 61 66 Z" fill="url(#greenGrad)" />
+</svg>

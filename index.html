@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Establecimiento Pozo del Carril - UNRC</title>
+    <meta name="description" content="Sistema de gestión contable, agrícola y porcina del Establecimiento Pozo del Carril de la Universidad Nacional de Río Cuarto (UNRC).">
+    <meta property="og:title" content="Establecimiento Pozo del Carril - UNRC">
+    <meta property="og:description" content="Sistema de gestión contable, agrícola y porcina del Establecimiento Pozo del Carril de la Universidad Nacional de Río Cuarto (UNRC).">
+    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./integrated.css">
+    <link rel="stylesheet" href="./access-print.css">
+    <link rel="stylesheet" href="./journal-audit.css">
+    <style id="printPageStyle">@page { size: A4 landscape; margin: 12mm; }</style>
+  </head>
+  <body class="auth-active">
+    <main id="authRoot" class="auth-root"><p role="status">Abriendo el acceso...</p></main>
+    <div class="app-shell" id="appShell" hidden>
+      <header class="app-topbar" id="topHeader">
+        <div class="topbar-brand">
+          <div class="brand-logos">
+            <img class="logo-field" src="./assets/logo-pozo-del-carril.svg" alt="Establecimiento Pozo del Carril">
+          </div>
+          <div class="brand-text">
+            <div class="brand-title-row">
+              <span class="brand-name">Establecimiento Pozo del Carril</span>
+            </div>
+            <span class="brand-sub">Universidad Nacional de Río Cuarto · FCE</span>
+          </div>
+        </div>
+
+        <div class="topbar-center">
+          <div class="currency-widget" id="currencyWidget">
+            <span class="widget-label">Cotización BNA:</span>
+            <div class="currency-toggle" role="group" aria-label="Moneda activa">
+              <button type="button" class="currency-btn active" data-currency="USD" id="btnCurrUSD">USD</button>
+              <button type="button" class="currency-btn" data-currency="ARS" id="btnCurrARS">ARS</button>
+            </div>
+            <span class="bna-rate" id="bnaRateDisplay" title="Tipo de cambio oficial Banco Nación (Dólar Vendedor Billete)">$ 1.550,00</span>
+            <button type="button" class="tool-btn-sm" data-action="quick-bna" title="Actualizar cotización BNA en vivo (Dólar Vendedor Billete)" aria-label="Actualizar cotización BNA en vivo">
+              <i data-lucide="refresh-cw" aria-hidden="true"></i>
+            </button>
+          </div>
+
+          <div class="sync-widget" id="syncWidget" data-action="storage-info" title="Almacenamiento: Servidor local persistente y caché local IndexedDB">
+            <span class="sync-dot" aria-hidden="true" style="background:#10b981"></span>
+            <span id="storageStatus">Sincronizado con el servidor</span>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="quick-actions-bar">
+            <button type="button" class="btn-quick quick-green" data-action="quick-lote" title="Registrar nuevo lote productivo">
+              <i data-lucide="plus" aria-hidden="true"></i>+ Lote
+            </button>
+            <button type="button" class="btn-quick quick-cyan" data-action="quick-venta" title="Registrar venta de hacienda o cereal">
+              <i data-lucide="handshake" aria-hidden="true"></i>+ Venta
+            </button>
+            <button type="button" class="btn-quick quick-rose" data-action="quick-costo" title="Registrar costo o compra de insumos">
+              <i data-lucide="receipt" aria-hidden="true"></i>+ Costo
+            </button>
+            <button type="button" class="btn-quick quick-purple" data-action="quick-sanidad" title="Registrar tratamiento veterinario o vacuna">
+              <i data-lucide="heart-pulse" aria-hidden="true"></i>+ Sanidad
+            </button>
+            <button type="button" class="btn-quick quick-slate" data-action="navigate" data-view="manual" title="Manual de usuario e instrucciones">
+              <i data-lucide="book-open" aria-hidden="true"></i>Manual
+            </button>
+          </div>
+
+          <div id="sessionBar" class="session-bar"></div>
+        </div>
+      </header>
+
+      <nav class="app-nav" id="mainNav" aria-label="Módulos del sistema"></nav>
+
+      <div class="workspace">
+        <section class="kpi-executive-banner" id="kpiBanner" aria-label="Indicadores ejecutivos clave"></section>
+
+        <main class="content" id="viewRoot" tabindex="-1"><p role="status">Abriendo el establecimiento...</p></main>
+
+        <footer class="app-credit">
+          <strong>Establecimiento Pozo del Carril</strong> · Sistema de Gestión Contable, Agrícola y Porcina · Taller de Práctica II · Carrera de Contador Público · Facultad de Ciencias Económicas · UNRC · Ciclo Lectivo 2026 · Grupo 5: Bertola Andrés, Fernández Matías, Mana Pilar, Priotti Grecia, Rosso Sofía
+        </footer>
+      </div>
+    </div>
+
+    <dialog class="record-dialog" id="recordDialog">
+      <form method="dialog" class="dialog-card" id="recordForm">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow" id="dialogKicker">Registro</p>
+            <h3 id="dialogTitle">Nuevo registro</h3>
+          </div>
+          <button class="icon-btn" value="cancel" type="button" data-action="close-dialog" aria-label="Cerrar">×</button>
+        </div>
+        <div class="form-grid" id="dialogFields"></div>
+        <p id="formError" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="btn ghost" value="cancel" type="button" data-action="close-dialog">Cancelar</button>
+          <button class="btn primary" value="default" type="submit">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <dialog id="accessDialog" class="record-dialog access-dialog"></dialog>
+    <dialog id="reportDialog" class="report-dialog"></dialog>
+    <dialog id="transferDialog" class="record-dialog access-dialog"></dialog>
+    <dialog id="confirmDialog" class="record-dialog confirm-dialog" style="padding:0; border:none; border-radius:10px; background:transparent"></dialog>
+    <dialog id="backupRestoreDialog" class="record-dialog" aria-label="Restaurar respaldo" style="padding:0; border:none; border-radius:10px; background:transparent"></dialog>
+    <dialog id="auditDialog" class="record-dialog audit-dialog"></dialog>
+    <dialog id="lotDetailDialog" class="record-dialog detail-dialog" aria-label="Ficha técnica de lote"></dialog>
+    <dialog id="alertsDialog" class="record-dialog alerts-dialog" aria-label="Centro de alertas"></dialog>
+    <dialog id="rateDialog" class="record-dialog rate-dialog" aria-label="Cotización BNA"></dialog>
+    <dialog id="csvWizardDialog" class="record-dialog" aria-label="Asistente de Importación CSV" style="padding:0; border:none; border-radius:10px; background:transparent"></dialog>
+    <div id="printRoot"></div>
+
+    <script src="./assets/lucide.min.js"></script>
+    <script src="./assets/papaparse.min.js"></script>
+    <script src="./assets/exceljs.min.js"></script>
+    <script src="./assets/account-plan.js"></script>
+    <script src="./domain.js"></script>
+    <script src="./csv-engine.js"></script>
+    <script src="./demo-data.js"></script>
+    <script src="./journal.js"></script>
+    <script src="./audit.js"></script>
+    <script src="./transfer.js"></script>
+    <script src="./auth.js"></script>
+    <script src="./storage.js"></script>
+    <script src="./csv-ui.js"></script>
+    <script src="./interface.js"></script>
+    <script src="./journal-ui.js"></script>
+    <script src="./audit-ui.js"></script>
+    <script src="./transfer-ui.js"></script>
+    <script src="./access-ui.js"></script>
+    <script src="./printing.js"></script>
+    <script src="./desktop-ui.js"></script>
+  </body>
+</html>

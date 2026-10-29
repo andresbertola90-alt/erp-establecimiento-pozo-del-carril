@@ -1,0 +1,20 @@
+{
+  "name": "unrc-pozo-del-carril-migracion",
+  "version": "1.4.0-migration.0",
+  "private": true,
+  "description": "Copia local de UNRC 1.4 para migrar a Google AI Studio; Sheets y backend pendientes",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.cjs",
+    "dev": "node server.cjs",
+    "build": "node -e 'process.exit(0)'",
+    "test": "node --test tests/domain.test.cjs tests/transfer.test.cjs tests/desktop-policy.test.cjs tests/journal-audit.test.cjs tests/workflow.test.cjs tests/account-plan.test.cjs tests/preview-server.test.cjs tests/backend.test.cjs tests/demo-data.test.cjs tests/csv-engine.test.cjs"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "lucide": "^1.48.0",
+    "papaparse": "^5.7.0"
+  }
+}

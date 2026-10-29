@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 200" width="160" height="200">
+  <defs>
+    <!-- Gradients for UNRC Shield -->
+    <linearGradient id="unrcSkyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#72cbf2" />
+      <stop offset="100%" stop-color="#4aafe0" />
+    </linearGradient>
+    <linearGradient id="unrcRedGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e8382c" />
+      <stop offset="100%" stop-color="#b82118" />
+    </linearGradient>
+    <linearGradient id="unrcGoldGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#eab308" />
+      <stop offset="50%" stop-color="#facc15" />
+      <stop offset="100%" stop-color="#fef08a" />
+    </linearGradient>
+    <linearGradient id="unrcFlameGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#dc2626" />
+      <stop offset="40%" stop-color="#ea580c" />
+      <stop offset="80%" stop-color="#facc15" />
+      <stop offset="100%" stop-color="#ffffff" />
+    </linearGradient>
+    <filter id="shieldShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000" flood-opacity="0.3" />
+    </filter>
+  </defs>
+
+  <!-- Outer Shield Outline -->
+  <g filter="url(#shieldShadow)">
+    <path d="M80 8 C126 8 148 14 148 24 L148 116 C148 156 112 182 80 192 C48 182 12 156 12 116 L12 24 C12 14 34 8 80 8 Z" fill="#ffffff" stroke="#171717" stroke-width="4" stroke-linejoin="round" />
+  </g>
+
+  <!-- Inner Shield Cliped Quadrants -->
+  <g id="shieldInterior">
+    <clipPath id="shieldClip">
+      <path d="M80 12 C122 12 144 18 144 26 L144 114 C144 152 110 176 80 186 C50 176 16 152 16 114 L16 26 C16 18 38 12 80 12 Z" />
+    </clipPath>
+    
+    <g clip-path="url(#shieldClip)">
+      <!-- Quadrant 1 (Top Left): Celeste UNRC -->
+      <rect x="0" y="0" width="80" height="96" fill="url(#unrcSkyGrad)" />
+      <!-- Quadrant 2 (Top Right): Rojo UNRC -->
+      <rect x="80" y="0" width="80" height="96" fill="url(#unrcRedGrad)" />
+      <!-- Quadrant 3 (Bottom Left): Negro UNRC -->
+      <rect x="0" y="96" width="80" height="110" fill="#18181b" />
+      <!-- Quadrant 4 (Bottom Right): Blanco / Plateado UNRC -->
+      <rect x="80" y="96" width="80" height="110" fill="#f8fafc" />
+
+      <!-- Horizontal & Vertical Dividing Cross -->
+      <line x1="16" y1="96" x2="144" y2="96" stroke="#ffffff" stroke-width="5" />
+      <line x1="80" y1="12" x2="80" y2="186" stroke="#ffffff" stroke-width="5" />
+
+      <!-- Top Left Elements: Sun Rays / Knowledge Star -->
+      <circle cx="48" cy="54" r="14" fill="#ffffff" opacity="0.9" />
+      <path d="M48 32 L48 40 M48 68 L48 76 M26 54 L34 54 M62 54 L70 54 M32 38 L38 44 M58 64 L64 70 M32 70 L38 64 M58 44 L64 38" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" />
+
+      <!-- Top Right Elements: Open Book of Science -->
+      <path d="M96 66 C104 62 112 62 120 65 L120 46 C112 43 104 43 96 46 Z" fill="#ffffff" opacity="0.95" />
+      <path d="M120 65 C128 62 136 62 144 66 L144 46 C136 43 128 43 120 46 Z" fill="#ffffff" opacity="0.95" />
+      <line x1="120" y1="46" x2="120" y2="65" stroke="#e8382c" stroke-width="2" />
+
+      <!-- Bottom Left Elements: Wheat Ear / Agronomy Laurel -->
+      <path d="M38 152 C44 142 50 130 52 114" stroke="#ffffff" stroke-width="3" stroke-linecap="round" fill="none" />
+      <ellipse cx="42" cy="144" rx="4" ry="2" transform="rotate(-30 42 144)" fill="#ffffff" />
+      <ellipse cx="48" cy="142" rx="4" ry="2" transform="rotate(30 48 142)" fill="#ffffff" />
+      <ellipse cx="46" cy="132" rx="4" ry="2" transform="rotate(-30 46 132)" fill="#ffffff" />
+      <ellipse cx="52" cy="130" rx="4" ry="2" transform="rotate(30 52 130)" fill="#ffffff" />
+      <ellipse cx="50" cy="120" rx="4" ry="2" transform="rotate(-30 50 120)" fill="#ffffff" />
+
+      <!-- Bottom Right Elements: Gear / Industry & University Wheel -->
+      <circle cx="112" cy="136" r="14" fill="none" stroke="#b82118" stroke-width="4" />
+      <circle cx="112" cy="136" r="6" fill="#171717" />
+    </g>
+  </g>
+
+  <!-- Central Torch of Knowledge (Fuego y Antorcha de la Universidad) -->
+  <g id="centerTorch">
+    <!-- Torch Handle -->
+    <path d="M76 86 L84 86 L82 116 L78 116 Z" fill="url(#unrcGoldGrad)" stroke="#171717" stroke-width="1.5" />
+    <!-- Torch Bowl -->
+    <path d="M72 86 C72 78 88 78 88 86 Z" fill="url(#unrcGoldGrad)" stroke="#171717" stroke-width="1.5" />
+    <!-- Flame -->
+    <path d="M80 48 C72 60 70 70 75 78 C78 74 81 74 81 78 C88 72 88 60 80 48 Z" fill="url(#unrcFlameGrad)" filter="drop-shadow(0 0 4px #facc15)" />
+  </g>
+
+  <!-- Banner: UNRC -->
+  <g id="unrcBanner">
+    <path d="M36 172 L124 172 L116 190 L80 186 L44 190 Z" fill="#171717" stroke="#ffffff" stroke-width="2" />
+    <text x="80" y="184" text-anchor="middle" font-family="'Segoe UI', Inter, Arial, sans-serif" font-weight="900" font-size="12" fill="#ffffff" letter-spacing="2">UNRC</text>
+  </g>
+</svg>

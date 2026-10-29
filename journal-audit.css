@@ -1,0 +1,34 @@
+#recordDialog[data-table="entries"] { width:min(1100px,calc(100% - 24px)); }
+#journalEditor { grid-column:1 / -1; min-width:0; }
+.journal-scroll { overflow-x:auto; }
+.journal-entry-table { width:100%; min-width:690px; table-layout:fixed; border-collapse:collapse; }
+.journal-account-col { width:48%; }
+.journal-amount-col { width:20%; }
+.journal-tools-col { width:12%; }
+.journal-entry-table th,.journal-entry-table td { padding:9px 6px; border-bottom:1px solid #E2E8F0; }
+.journal-entry-table th { font-size:.85rem; text-align:left; color:#14263D; }
+.journal-entry-table input,.journal-entry-table select { width:100%; min-width:0; }
+.journal-entry-table input { text-align:right; font-variant-numeric:tabular-nums; }
+.journal-totals { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; border-top:2px solid #087FBD; margin-top:16px; padding-top:16px; }
+.journal-totals span { display:block; font-size:.8rem; color:#64748B; }
+.journal-totals strong { display:block; margin-top:6px; font-size:1.12rem; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; color:#14263D; }
+.journal-balance-state { color:#23845B; font-size:.9rem; margin:14px 0 0; font-weight:700; }
+.journal-balance-state.unbalanced { color:#C74646; }
+.journal-ledger .numeric { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.journal-operation th { background:#F1F5F9; text-align:left; font-weight:600; white-space:normal; color:#14263D; }
+.journal-credit-account { padding-left:30px; }
+.journal-ledger tfoot th { background:#F1F5F9; border-top:1px solid #CBD5E1; color:#14263D; }
+.audit-filters { display:flex; flex-wrap:wrap; gap:14px; align-items:end; }
+.audit-filters .field { flex:1 1 180px; }
+.audit-dialog { width:min(950px,calc(100% - 24px)); padding:24px; background:#fff; color:#14263D; border:1px solid #CBD5E1; border-radius:8px; box-shadow:0 24px 64px rgba(20,38,61,0.25); }
+.audit-dialog .surface-title { align-items:start; gap:16px; }
+.audit-dialog .surface-title > div { min-width:0; overflow-wrap:anywhere; }
+.audit-dialog .surface-title h3 { margin:0 0 10px; font-size:1.12rem; color:#14263D; }
+.audit-dialog .surface-title p { color:#64748B; }
+.audit-dialog .surface-title > button { flex:0 0 auto; }
+.audit-diff { width:100%; min-width:0; table-layout:fixed; border-collapse:collapse; }
+.audit-diff th,.audit-diff td { padding:10px; border:1px solid #CBD5E1; text-align:left; vertical-align:top; overflow-wrap:anywhere; white-space:pre-wrap; }
+.audit-diff th { background:#F1F5F9; color:#14263D; }
+.session-actions { display:flex; gap:6px; flex:0 0 auto!important; }
+@media(max-width:600px) { .journal-totals { gap:10px; } .journal-totals strong { font-size:.95rem; } .audit-dialog { padding:14px; } }
+@media print { .journal-ledger { min-width:0; } .journal-ledger th,.journal-ledger td { white-space:normal!important; } .journal-operation { break-after:avoid; } }

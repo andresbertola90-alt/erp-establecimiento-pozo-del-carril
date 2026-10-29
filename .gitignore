@@ -1,0 +1,16 @@
+node_modules/
+dist/
+tmp/
+output/
+.env
+.env.*
+!.env.example
+*.unrc
+*.log
+*.exe
+*.blockmap
+*.zip
+credentials*.json
+service-account*.json
+**/IndexedDB/
+**/Local Storage/
