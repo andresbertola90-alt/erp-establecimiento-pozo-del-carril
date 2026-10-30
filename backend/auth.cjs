@@ -11,11 +11,12 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 const ROLES = {
   admin: { id: 'admin', label: 'Administrador', canWriteAll: true, canAdminUsers: true, canClosePeriods: true, canConfigSheets: true },
   responsable_agricultura: { id: 'responsable_agricultura', label: 'Responsable de Agricultura', area: 'agricultura', canWriteAll: false },
-  responsable_ganaderia: { id: 'responsable_ganaderia', label: 'Responsable de Ganadería', area: 'ganaderia', canWriteAll: false },
-  responsable_cerdos: { id: 'responsable_cerdos', label: 'Responsable de Ganadería (Porcinos)', area: 'cerdos', canWriteAll: false },
-  analista: { id: 'analista', label: 'Usuario Analista', canWriteAll: false, canAnalyze: true },
-  operador: { id: 'operador', label: 'Operador / Analista Rural', canWriteAll: false, canOperate: true },
-  auditor: { id: 'auditor', label: 'Auditor', readonly: true }
+  responsable_ganaderia: { id: 'responsable_ganaderia', label: 'Responsable de Ganadería General', area: 'ganaderia', canWriteAll: false },
+  analista: { id: 'analista', label: 'Usuario Analista', readonly: true, canAnalyze: true },
+  auditor: { id: 'auditor', label: 'Auditor', readonly: true, canAudit: true },
+  // Compatibility aliases
+  responsable_cerdos: { id: 'responsable_cerdos', label: 'Responsable de Ganadería (Porcinos)', area: 'ganaderia', canWriteAll: false },
+  operador: { id: 'operador', label: 'Operador / Analista Rural', readonly: true, canAnalyze: true }
 };
 
 // In-memory active session tokens: token -> { userId, expiresAt }
@@ -50,12 +51,10 @@ function loadUsers() {
   // Ensure default role accounts are seeded for smooth testing
   const defaultAccounts = [
     { username: 'admin', name: 'Administrador UNRC', role: 'admin', pass: 'AdminPozo2026!*' },
-    { username: 'agricultura', name: 'Ing. Agrónomo - Agricultura', role: 'responsable_agricultura', pass: 'AgriculturaUNRC2026!' },
-    { username: 'ganaderia', name: 'Méd. Veterinario - Ganadería', role: 'responsable_ganaderia', pass: 'GanaderiaUNRC2026!' },
-    { username: 'cerdos', name: 'Méd. Veterinario - Porcinos', role: 'responsable_cerdos', pass: 'PorcinosUNRC2026!' },
-    { username: 'analista', name: 'Lic. Economía - Analista de Gestión', role: 'analista', pass: 'AnalistaUNRC2026!' },
-    { username: 'operador', name: 'Operador de Carga Rural', role: 'operador', pass: 'OperadorUNRC2026!' },
-    { username: 'auditor', name: 'Auditor Académico - Consulta', role: 'auditor', pass: 'AuditorUNRC2026!' }
+    { username: 'agricultura', name: 'Ing. Agrónomo - Responsable de Agricultura', role: 'responsable_agricultura', pass: 'AgriculturaUNRC2026!' },
+    { username: 'ganaderia', name: 'Méd. Veterinario - Responsable de Ganadería', role: 'responsable_ganaderia', pass: 'GanaderiaUNRC2026!' },
+    { username: 'analista', name: 'Lic. Economía - Usuario Analista', role: 'analista', pass: 'AnalistaUNRC2026!' },
+    { username: 'auditor', name: 'Auditor Académico - Auditoría y Control', role: 'auditor', pass: 'AuditorUNRC2026!' }
   ];
 
   let modified = false;
@@ -166,7 +165,7 @@ function createUser(actor, { username, name, password, role }) {
   if (typeof password !== 'string' || password.length < 12 || password.length > 128) {
     throw new Error('La contraseña debe tener entre 12 y 128 caracteres.');
   }
-  const targetRole = ROLES[role] ? role : 'operador';
+  const targetRole = ROLES[role] ? role : 'analista';
 
   const users = loadUsers();
   if (users.some(u => u.username.toLowerCase() === cleanUsername)) {
@@ -206,10 +205,10 @@ function registerUser({ username, name, password, role }) {
     throw new Error('La contraseña debe tener al menos 8 caracteres.');
   }
 
-  let targetRole = ROLES[role] ? role : 'operador';
+  let targetRole = ROLES[role] ? role : 'analista';
   const users = loadUsers();
   if (targetRole === 'admin' && users.length > 0) {
-    targetRole = 'operador';
+    targetRole = 'analista';
   }
 
   if (users.some(u => u.username.toLowerCase() === cleanUsername)) {
@@ -263,6 +262,10 @@ function updateUser(actor, id, updates) {
 
   if (updates.name) u.name = String(updates.name).trim().slice(0, 80);
   if (updates.role && ROLES[updates.role]) {
+    // Prevent modifying one's own role
+    if (u.id === actor.id && updates.role !== u.role) {
+      throw new Error('Un usuario no puede modificar su propio rol.');
+    }
     // Prevent removing the last active admin
     if (u.role === 'admin' && updates.role !== 'admin') {
       const activeAdmins = users.filter(x => x.active && x.role === 'admin' && x.id !== id);

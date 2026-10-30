@@ -42,9 +42,12 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #0f172a url("./assets/rural-background.png") center / cover fixed no-repeat;
+  background-color: #0f172a;
   color: var(--ink);
-  image-rendering: -webkit-optimize-contrast;
+}
+
+body.auth-active {
+  background: #0f172a url("./assets/rural-background.png") center / cover no-repeat fixed !important;
 }
 
 body::before {
@@ -55,7 +58,10 @@ body::before {
   pointer-events: none;
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.02), rgba(237, 247, 252, 0.3)),
-    rgba(237, 247, 252, 0.12);
+    rgba(237, 247, 252, 0.12),
+    url("./assets/rural-background.png") center / cover no-repeat;
+  will-change: transform;
+  transform: translateZ(0);
 }
 
 button,
@@ -90,7 +96,6 @@ button {
     linear-gradient(180deg, rgba(23, 23, 23, 0.9), rgba(23, 23, 23, 0.74)),
     rgba(23, 23, 23, 0.78);
   box-shadow: 14px 0 36px rgba(23, 23, 23, 0.2);
-  backdrop-filter: blur(16px);
   color: #f9fafb;
   overflow: hidden;
 }
@@ -255,9 +260,8 @@ button {
   min-height: 96px;
   padding: 18px 28px;
   border-bottom: 1px solid rgba(27, 131, 178, 0.18);
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.95);
   box-shadow: 0 10px 30px rgba(23, 23, 23, 0.08);
-  backdrop-filter: blur(14px);
 }
 
 .topbar::after {
@@ -342,10 +346,9 @@ textarea:focus {
   border: 1px solid #E2E8F0;
   border-left: 4px solid #087FBD;
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.96);
   color: #64748B;
   box-shadow: 0 10px 28px rgba(20, 38, 61, 0.06);
-  backdrop-filter: blur(10px);
   font-size: 0.78rem;
   font-weight: 800;
   line-height: 1.45;
@@ -461,7 +464,6 @@ textarea:focus {
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(12px);
 }
 
 .kpi-card {

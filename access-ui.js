@@ -3,19 +3,36 @@ let userDirectory=[],accessBusy=false,recoveryData=null,recoveryNext=null;
 const accessRole = role => ({
   admin: 'Administrador',
   responsable_agricultura: 'Responsable de Agricultura',
-  responsable_ganaderia: 'Responsable de Ganadería',
+  responsable_ganaderia: 'Responsable de Ganadería General',
   responsable_cerdos: 'Responsable de Ganadería (Porcinos)',
   analista: 'Usuario Analista',
   operador: 'Operador / Analista Rural',
   auditor: 'Auditor'
-}[role] || role || 'Operador');
+}[role] || role || 'Usuario Analista');
 function passwordField(id,label,autocomplete='new-password') {
   return `<div class="field"><label for="${id}">${label}</label><div class="password-control"><input id="${id}" name="${id}" type="password" required minlength="12" maxlength="128" autocomplete="${autocomplete}"><button type="button" class="tool" data-access-action="toggle-password" data-target="${id}" title="Mostrar contraseña" aria-label="Mostrar contraseña" aria-pressed="false">${icon('eye')}</button></div></div>`;
 }
 function accessError(form,error) {const el=form.querySelector('[role="alert"]');el.textContent=error.message||String(error);el.hidden=false;}
-async function refreshUsers() {userDirectory=UNRCAuth.current?.role==='admin'?await UNRCAuth.listUsers():[];accessAudit=UNRCAuth.current?await UNRCAuth.listAudit():[];}
+async function refreshSheetsStatus() {
+  try {
+    const res = await fetch('/api/sheets/status', {
+      headers: UNRCAuth.token ? { 'Authorization': `Bearer ${UNRCAuth.token}` } : {}
+    });
+    if (res.ok) {
+      window._unrcSheetsStatus = await res.json();
+    }
+  } catch (e) {
+    console.warn('[Sheets] No se pudo obtener estado de Sheets:', e.message);
+  }
+}
+async function refreshUsers() {
+  userDirectory = UNRCAuth.current?.role === 'admin' ? await UNRCAuth.listUsers() : [];
+  accessAudit = UNRCAuth.current ? await UNRCAuth.listAudit() : [];
+  await refreshSheetsStatus();
+}
 function renderSession() {
   const u=UNRCAuth.current;$('#sessionBar').innerHTML=u?`<div><strong>${esc(u.name)}</strong><small>${accessRole(u.role)}</small></div><div class="session-actions"><button class="tool" type="button" data-access-action="switch" title="Cambiar usuario" aria-label="Cambiar usuario">${icon('users-round')}</button><button class="tool" type="button" data-access-action="logout" title="Cerrar sesión" aria-label="Cerrar sesión">${icon('log-out')}</button></div>`:'';
+  if(typeof updateQuickActionsVisibility === 'function') updateQuickActionsVisibility();
 }
 async function showAccess(mode,choices=[]) {
   document.body.classList.add('auth-active');
@@ -114,6 +131,9 @@ async function enterSystem() {
     if (dot) dot.style.background = '#087FBD';
   }
   renderSession();render();
+  if (typeof UNRCHelpUI !== 'undefined') {
+    UNRCHelpUI.checkAutoStartTour();
+  }
 }
 function showRecovery(result,next) {
   recoveryData=result;recoveryNext=next;const dialog=$('#accessDialog');if(dialog.open)dialog.close();
@@ -123,7 +143,7 @@ function showRecovery(result,next) {
 function openUserForm(mode,id) {
   const user=userDirectory.find(u=>u.id===id),dialog=$('#accessDialog');
   const create=mode==='create',self=mode==='change';
-  dialog.innerHTML=`<form id="userForm" class="access-form" data-mode="${mode}" data-id="${esc(id||'')}"><div class="surface-title"><h3>${create?'Crear usuario':self?'Cambiar mi contraseña':'Restablecer contraseña'}</h3><button class="tool" type="button" data-access-action="close" title="Cerrar" aria-label="Cerrar">${icon('x')}</button></div>${create?'<div class="field"><label for="newName">Nombre y apellido</label><input id="newName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="newUsername">Usuario</label><input id="newUsername" name="username" required minlength="3" maxlength="40" pattern="(?:[a-zA-Z0-9._]|-){3,40}" autocapitalize="none" autocomplete="off"></div><div class="field"><label for="newRole">Permiso / Rol</label><select id="newRole" name="role"><option value="admin">Administrador</option><option value="responsable_agricultura">Responsable de Agricultura</option><option value="responsable_ganaderia">Responsable de Ganadería</option><option value="responsable_cerdos">Responsable de Ganadería (Porcinos)</option><option value="analista">Usuario Analista</option><option value="operador">Operador / Analista Rural</option><option value="auditor">Auditor</option></select></div>':`<p>${esc(self?UNRCAuth.current.username:user?.username)}</p>`}${self?passwordField('currentPassword','Contraseña actual','current-password'):''}${passwordField('newPassword','Contraseña nueva')}<p class="field-hint">Entre 12 y 128 caracteres. Podés usar una frase.</p>${passwordField('newConfirm','Repetir contraseña')}<p class="access-error" role="alert" hidden></p><button type="submit" class="btn primary">${icon(create?'user-plus':'key-round')}${create?'Crear usuario':'Guardar contraseña'}</button></form>`;
+  dialog.innerHTML=`<form id="userForm" class="access-form" data-mode="${mode}" data-id="${esc(id||'')}"><div class="surface-title"><h3>${create?'Crear usuario':self?'Cambiar mi contraseña':'Restablecer contraseña'}</h3><button class="tool" type="button" data-access-action="close" title="Cerrar" aria-label="Cerrar">${icon('x')}</button></div>${create?'<div class="field"><label for="newName">Nombre y apellido</label><input id="newName" name="name" required maxlength="80" autocomplete="name"></div><div class="field"><label for="newUsername">Usuario</label><input id="newUsername" name="username" required minlength="3" maxlength="40" pattern="(?:[a-zA-Z0-9._]|-){3,40}" autocapitalize="none" autocomplete="off"></div><div class="field"><label for="newRole">Permiso / Rol</label><select id="newRole" name="role"><option value="admin">Administrador</option><option value="responsable_agricultura">Responsable de Agricultura</option><option value="responsable_ganaderia">Responsable de Ganadería General</option><option value="analista">Usuario Analista</option><option value="auditor">Auditor</option></select></div>':`<p>${esc(self?UNRCAuth.current.username:user?.username)}</p>`}${self?passwordField('currentPassword','Contraseña actual','current-password'):''}${passwordField('newPassword','Contraseña nueva')}<p class="field-hint">Entre 12 y 128 caracteres. Podés usar una frase.</p>${passwordField('newConfirm','Repetir contraseña')}<p class="access-error" role="alert" hidden></p><button type="submit" class="btn primary">${icon(create?'user-plus':'key-round')}${create?'Crear usuario':'Guardar contraseña'}</button></form>`;
   dialog.showModal();refreshIcons();dialog.querySelector('input')?.focus();
 }
 function renderUsers() {
@@ -131,7 +151,21 @@ function renderUsers() {
   const own=`<section class="panel"><div class="surface-title"><h4>Mi cuenta</h4><button type="button" class="btn ghost" data-access-action="change">${icon('key-round')}Cambiar mi contraseña</button></div>${summary('Nombre',u.name)}${summary('Usuario',u.username)}${summary('Permiso',accessRole(u.role))}</section>`;
   if(u.role!=='admin')return own;
   const create=`<button type="button" class="btn primary" data-access-action="create">${icon('user-plus')}Crear usuario</button>`;
-  return table('Usuarios del establecimiento',['Nombre','Usuario','Permiso','Estado',''],userDirectory.map(person=>[esc(person.name),esc(person.username),accessRole(person.role),badge(person.active?'Activo':'Inactivo',person.active?'':'neutral'),person.id===u.id?badge('Tu cuenta','neutral'):`<div class="record-tools"><button class="tool" data-access-action="reset" data-id="${person.id}" title="Restablecer contraseña" aria-label="Restablecer contraseña">${icon('key-round')}</button><button class="tool" data-access-action="active" data-id="${person.id}" data-active="${!person.active}" title="${person.active?'Desactivar':'Activar'} usuario" aria-label="${person.active?'Desactivar':'Activar'} usuario">${icon(person.active?'user-round-x':'user-round-check')}</button></div>`]),null,null,create)+own;
+  return table('Usuarios del establecimiento',['Nombre','Usuario','Permiso / Rol','Estado',''],userDirectory.map(person=>[
+    esc(person.name),
+    esc(person.username),
+    person.id===u.id
+      ? badge(accessRole(person.role),'neutral')+' <small class="muted">(Tu rol)</small>'
+      : `<select class="user-role-select" data-access-action="change-role" data-id="${person.id}" style="padding:3px 6px; border-radius:4px; border:1px solid #cbd5e1; font-size:0.8rem; background:#f8fafc">
+          <option value="admin" ${person.role === 'admin' ? 'selected' : ''}>Administrador</option>
+          <option value="responsable_agricultura" ${person.role === 'responsable_agricultura' ? 'selected' : ''}>Responsable de Agricultura</option>
+          <option value="responsable_ganaderia" ${person.role === 'responsable_ganaderia' ? 'selected' : ''}>Responsable de Ganadería General</option>
+          <option value="analista" ${person.role === 'analista' ? 'selected' : ''}>Usuario Analista</option>
+          <option value="auditor" ${person.role === 'auditor' ? 'selected' : ''}>Auditor</option>
+        </select>`,
+    badge(person.active?'Activo':'Inactivo',person.active?'':'neutral'),
+    person.id===u.id?badge('Tu cuenta','neutral'):`<div class="record-tools"><button class="tool" data-access-action="reset" data-id="${person.id}" title="Restablecer contraseña" aria-label="Restablecer contraseña">${icon('key-round')}</button><button class="tool" data-access-action="active" data-id="${person.id}" data-active="${!person.active}" title="${person.active?'Desactivar':'Activar'} usuario" aria-label="${person.active?'Desactivar':'Activar'} usuario">${icon(person.active?'user-round-x':'user-round-check')}</button></div>`
+  ]),null,null,create)+own;
 }
 document.addEventListener('click',async e=>{
   const el=e.target.closest('[data-access-action]');if(!el||accessBusy)return;const action=el.dataset.accessAction;
@@ -155,7 +189,27 @@ document.addEventListener('click',async e=>{
     if(action==='download-recovery'&&recoveryData)download('UNRC-clave-'+recoveryData.user.username+'.txt','Acceso local UNRC\r\nUsuario: '+recoveryData.user.username+'\r\nClave de recuperación: '+recoveryData.recoveryCode+'\r\nConservar en un lugar privado. Reemplaza cualquier clave de recuperación anterior.','text/plain;charset=utf-8');
   }catch(error){toast(error.message);}finally{accessBusy=false;}
 });
-document.addEventListener('change',event=>{if(event.target.id==='switchUserSelect'){$('#accessUsername').value=event.target.value;$('#accessPassword').value='';$('#accessPassword').focus();}});
+document.addEventListener('change',async event=>{
+  if(event.target.id==='switchUserSelect'){$('#accessUsername').value=event.target.value;$('#accessPassword').value='';$('#accessPassword').focus();return;}
+  const roleEl = event.target.closest('[data-access-action="change-role"]');
+  if(roleEl && !accessBusy){
+    const userId = roleEl.dataset.id;
+    const newRole = roleEl.value;
+    try {
+      accessBusy = true;
+      await UNRCAuth.updateRole(userId, newRole);
+      toast(`Rol de usuario actualizado a "${accessRole(newRole)}" correctamente.`, 'info');
+      await refreshUsers();
+      render();
+    } catch(err) {
+      toast(err.message, 'error');
+      await refreshUsers();
+      render();
+    } finally {
+      accessBusy = false;
+    }
+  }
+});
 document.addEventListener('submit',async e=>{
   const form=e.target;if(!['authForm','userForm','recoveryNotice'].includes(form.id))return;e.preventDefault();if(accessBusy)return;
   if(form.id==='recoveryNotice'){if(!recoveryNext||!form.reportValidity())return;accessBusy=true;const next=recoveryNext;recoveryData=recoveryNext=null;$('#accessDialog').close();$('#accessDialog').replaceChildren();try{await next();}catch(error){await showAccess('login');toast(error.message);}finally{accessBusy=false;}return;}

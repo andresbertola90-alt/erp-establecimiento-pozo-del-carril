@@ -23,7 +23,13 @@ const ALLOWED_ASSETS = new Set([
   'transfer.js',
   'transfer-ui.js',
   'desktop-ui.js',
-  'demo-data.js'
+  'demo-data.js',
+  'csv-engine.js',
+  'csv-ui.js',
+  'units-engine.js',
+  'semaphore-engine.js',
+  'help-engine.js',
+  'help-ui.js'
 ]);
 
 function isEntry(url) {

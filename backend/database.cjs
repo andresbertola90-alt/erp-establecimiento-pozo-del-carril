@@ -98,40 +98,25 @@ function checkPermissions(actor, table, record, action = 'commit') {
   if (!actor) throw new Error('Se requiere una sesión autenticada.');
   if (actor.role === 'admin') return true;
 
-  if (actor.role === 'auditor') {
-    throw new Error('El perfil Auditor tiene acceso de solo lectura y no puede modificar registros.');
-  }
-
-  // Analysts can explore and simulate, but not alter base accounting or closings
   if (actor.role === 'analista') {
-    if (['accounts', 'closings'].includes(table)) {
-      throw new Error('Solo los administradores pueden gestionar el plan de cuentas o cerrar ejercicios.');
-    }
-    return true;
+    throw new Error('Acceso denegado: El perfil Analista funciona en modo de solo lectura y no puede crear, modificar ni anular registros.');
   }
 
-  // Operators cannot touch accounts, closings, or system settings
-  if (actor.role === 'operador') {
-    if (['accounts', 'closings'].includes(table)) {
-      throw new Error('Solo los administradores pueden gestionar el plan de cuentas o cerrar ejercicios.');
-    }
-    return true;
+  if (actor.role === 'auditor') {
+    throw new Error('Acceso denegado: El perfil Auditor tiene acceso de solo lectura y no puede crear, modificar ni anular registros.');
   }
 
   // Unit responsibles
   if (actor.role === 'responsable_agricultura') {
-    const forbiddenLivestockTables = ['lots', 'sows', 'births'];
+    const forbiddenLivestockTables = ['lots', 'sows', 'births', 'treatments', 'movements'];
     if (forbiddenLivestockTables.includes(table)) {
       throw new Error('Acceso denegado: el responsable de Agricultura no puede operar registros de Ganadería.');
-    }
-    if (table === 'movements') {
-      throw new Error('Acceso denegado: los movimientos de hacienda corresponden a Ganadería.');
     }
     if (record && record.area && !['agricultura', 'maiz', 'soja', 'comun'].includes(record.area)) {
       throw new Error('Acceso denegado: solo podés operar comprobantes de Agricultura.');
     }
-    if (['accounts', 'closings'].includes(table)) {
-      throw new Error('Solo los administradores pueden gestionar el plan de cuentas o cerrar ejercicios.');
+    if (['accounts', 'closings', 'settings', 'users', 'scenarios'].includes(table)) {
+      throw new Error('Solo los administradores pueden gestionar el plan de cuentas, cierres o configuraciones.');
     }
     return true;
   }
@@ -146,13 +131,14 @@ function checkPermissions(actor, table, record, action = 'commit') {
     if (record && record.area && ['agricultura', 'maiz', 'soja'].includes(record.area)) {
       throw new Error('Acceso denegado: solo podés operar comprobantes de Ganadería.');
     }
-    if (['accounts', 'closings'].includes(table)) {
-      throw new Error('Solo los administradores pueden gestionar el plan de cuentas o cerrar ejercicios.');
+    if (['accounts', 'closings', 'settings', 'users', 'scenarios'].includes(table)) {
+      throw new Error('Solo los administradores pueden gestionar el plan de cuentas, cierres o configuraciones.');
     }
     return true;
   }
 
-  return true;
+  // Operators / legacy fallback: read only
+  throw new Error(`Acceso denegado: El rol "${actor.role}" no tiene permisos de modificación en el sistema.`);
 }
 
 function checkSanitaryWithdrawal(db, sale) {
@@ -272,6 +258,8 @@ function commitRecord(actor, { table, record, expectedRevision, operationId }) {
 
 function cancelRecord(actor, { table, id, expectedRevision, operationId }) {
   return synchronized(async () => {
+    checkPermissions(actor, table, null, 'cancel');
+
     if (operationId && idempotencyMap.has(operationId)) {
       const db = getDatabase();
       return { success: true, idempotent: true, revision: db.revision, data: db };
@@ -321,25 +309,40 @@ function cancelRecord(actor, { table, id, expectedRevision, operationId }) {
 }
 
 function filterDataForActor(db, actor) {
-  if (!actor || actor.role === 'admin' || actor.role === 'auditor') {
-    return db;
-  }
-  // Scope filtering if requested
+  if (!actor) return db;
   const copy = structuredClone(db);
+
+  // Consultar auditoría: Solo Administrador y Auditor
+  if (actor.role !== 'admin' && actor.role !== 'auditor') {
+    copy.auditLog = [];
+  }
+
+  // Administrador, Auditor y Analista pueden consultar todas las áreas operativas
+  if (actor.role === 'admin' || actor.role === 'auditor' || actor.role === 'analista') {
+    return copy;
+  }
+
+  // Responsable de Agricultura: Consultar agricultura Sí, Consultar ganadería No
   if (actor.role === 'responsable_agricultura') {
     copy.lots = [];
     copy.sows = [];
     copy.births = [];
     copy.movements = [];
-    copy.sales = (copy.sales || []).filter(s => s.area === 'agricultura');
-    copy.costs = (copy.costs || []).filter(c => c.area === 'agricultura' || c.area === 'comun');
-    copy.stock = (copy.stock || []).filter(st => st.area === 'agricultura' || !st.area);
-  } else if (actor.role === 'responsable_cerdos') {
-    copy.campaigns = [];
-    copy.sales = (copy.sales || []).filter(s => s.area === 'cerdos');
-    copy.costs = (copy.costs || []).filter(c => c.area === 'cerdos' || c.area === 'comun');
-    copy.stock = (copy.stock || []).filter(st => st.area === 'cerdos' || !st.area);
+    copy.sales = (copy.sales || []).filter(s => ['agricultura', 'maiz', 'soja'].includes(s.area));
+    copy.costs = (copy.costs || []).filter(c => ['agricultura', 'maiz', 'soja', 'comun'].includes(c.area));
+    copy.stock = (copy.stock || []).filter(st => ['agricultura', 'maiz', 'soja'].includes(st.area) || !st.area);
+    return copy;
   }
+
+  // Responsable de Ganadería: Consultar ganadería Sí, Consultar agricultura No
+  if (actor.role === 'responsable_ganaderia' || actor.role === 'responsable_cerdos') {
+    copy.campaigns = [];
+    copy.sales = (copy.sales || []).filter(s => ['cerdos', 'porcinos', 'bovinos', 'ovinos', 'ganaderia'].includes(s.area));
+    copy.costs = (copy.costs || []).filter(c => ['cerdos', 'porcinos', 'bovinos', 'ovinos', 'ganaderia', 'comun'].includes(c.area));
+    copy.stock = (copy.stock || []).filter(st => ['cerdos', 'porcinos', 'bovinos', 'ovinos', 'ganaderia'].includes(st.area) || !st.area);
+    return copy;
+  }
+
   return copy;
 }
 

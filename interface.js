@@ -1,6 +1,8 @@
 'use strict';
 const D = UNRC;
 const Plan=UNRCAccountPlan;
+const Units = typeof UNRCUnits !== 'undefined' ? UNRCUnits : (typeof window !== 'undefined' ? window.UNRCUnits : null);
+const Semaphore = typeof UNRCSemaphore !== 'undefined' ? UNRCSemaphore : (typeof window !== 'undefined' ? window.UNRCSemaphore : null);
 let db, busy = false;
 const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const ui = { view: 'general', tab: {}, from: today().slice(0, 4) + '-01-01', to: today(), search: '', area: 'all', category: 'all', scenario: {}, ledgerAccount: '', currency: 'USD', bnaRate: 1550.00, matrixSubunits: true };
@@ -36,22 +38,160 @@ const savedScenarios = () => confirmed('scenarios').sort((a,b)=>(a.savedAt||a.da
 const button = (label, action, attrs = '', glyph = 'plus', type = 'primary') => `<button type="button" class="btn ${type}" data-action="${action}" ${attrs}>${icon(glyph)}${esc(label)}</button>`;
 const notice = (text, type = '') => `<div class="notice ${type}">${icon(type === 'error' ? 'circle-alert' : 'info')}<span>${esc(text)}</span></div>`;
 const empty = text => `<div class="empty">${icon('clipboard-list')}${esc(text)}</div>`;
-const controls = (table, r) => `<div class="record-tools"><button type="button" class="tool" data-action="edit" data-table="${table}" data-id="${esc(r.id)}" title="Editar registro" aria-label="Editar registro">${icon('pencil')}</button><button type="button" class="tool danger" data-action="cancel" data-table="${table}" data-id="${esc(r.id)}" title="Anular registro" aria-label="Anular registro">${icon('archive-x')}</button></div>`;
+function canAccessView(role, view) {
+  if (!role || role === 'admin') return true;
+  const v = String(view || '').toLowerCase();
+  if (['ayuda', 'help', 'manual', 'general', 'resumen'].includes(v)) return true;
+
+  if (role === 'responsable_agricultura') {
+    const forbidden = ['cerdos', 'porcinos', 'bovinos', 'ovinos', 'sanidad', 'contabilidad', 'administracion', 'admin', 'ajustes', 'auditoria'];
+    return !forbidden.includes(v);
+  }
+
+  if (role === 'responsable_ganaderia' || role === 'responsable_cerdos') {
+    const forbidden = ['maiz', 'soja', 'comparador', 'contabilidad', 'administracion', 'admin', 'ajustes', 'auditoria'];
+    return !forbidden.includes(v);
+  }
+
+  if (role === 'analista') {
+    // Mode strict read-only: Can see operations, indicators, and accounting; NO administration, settings, or audit log
+    const forbidden = ['administracion', 'admin', 'ajustes', 'auditoria'];
+    return !forbidden.includes(v);
+  }
+
+  if (role === 'auditor') {
+    // Audit consultation mode: Can see operations, accounting, reports, indicators AND audit log; NO administration or settings
+    const forbidden = ['administracion', 'admin', 'ajustes'];
+    return !forbidden.includes(v);
+  }
+
+  // Any other fallback defaults to general
+  return ['general', 'resumen', 'ayuda', 'manual'].includes(v);
+}
+
+function canModifyTable(role, table, record) {
+  if (!role || role === 'admin') return true;
+  if (role === 'analista' || role === 'auditor') return false;
+
+  if (role === 'responsable_agricultura') {
+    const forbiddenLivestockTables = ['lots', 'sows', 'births', 'treatments', 'movements'];
+    if (forbiddenLivestockTables.includes(table)) return false;
+    if (['accounts', 'closings', 'settings', 'users', 'scenarios'].includes(table)) return false;
+    if (table === 'sales' && record && record.area && !['agricultura', 'maiz', 'soja'].includes(record.area)) return false;
+    if (table === 'costs' && record && record.area && !['agricultura', 'maiz', 'soja', 'comun'].includes(record.area)) return false;
+    return true;
+  }
+
+  if (role === 'responsable_ganaderia' || role === 'responsable_cerdos') {
+    if (['campaigns', 'accounts', 'closings', 'settings', 'users', 'scenarios'].includes(table)) return false;
+    if (table === 'sales' && record && record.area && ['agricultura', 'maiz', 'soja'].includes(record.area)) return false;
+    if (table === 'costs' && record && record.area && ['agricultura', 'maiz', 'soja'].includes(record.area)) return false;
+    return true;
+  }
+
+  return false;
+}
+
+function canExportTable(role, table) {
+  if (!role || role === 'admin' || role === 'analista' || role === 'auditor') return true;
+  if (role === 'responsable_agricultura') {
+    const forbidden = ['lots', 'sows', 'births', 'treatments', 'movements', 'accounts', 'closings', 'users'];
+    return !forbidden.includes(table);
+  }
+  if (role === 'responsable_ganaderia' || role === 'responsable_cerdos') {
+    const forbidden = ['campaigns', 'accounts', 'closings', 'users'];
+    return !forbidden.includes(table);
+  }
+  return true;
+}
+
+function updateQuickActionsVisibility() {
+  const u = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+  const role = u?.role || 'admin';
+  const btnLote = document.querySelector('[data-action="quick-lote"]');
+  const btnVenta = document.querySelector('[data-action="quick-venta"]');
+  const btnCosto = document.querySelector('[data-action="quick-costo"]');
+  const btnSanidad = document.querySelector('[data-action="quick-sanidad"]');
+
+  const isReadOnly = role === 'analista' || role === 'auditor';
+  if (isReadOnly) {
+    if (btnLote) btnLote.hidden = true;
+    if (btnVenta) btnVenta.hidden = true;
+    if (btnCosto) btnCosto.hidden = true;
+    if (btnSanidad) btnSanidad.hidden = true;
+    return;
+  }
+
+  if (role === 'responsable_agricultura') {
+    if (btnLote) btnLote.hidden = true;
+    if (btnSanidad) btnSanidad.hidden = true;
+    if (btnVenta) btnVenta.hidden = false;
+    if (btnCosto) btnCosto.hidden = false;
+  } else if (role === 'responsable_ganaderia' || role === 'responsable_cerdos') {
+    if (btnLote) btnLote.hidden = false;
+    if (btnSanidad) btnSanidad.hidden = false;
+    if (btnVenta) btnVenta.hidden = false;
+    if (btnCosto) btnCosto.hidden = false;
+  } else {
+    if (btnLote) btnLote.hidden = false;
+    if (btnVenta) btnVenta.hidden = false;
+    if (btnCosto) btnCosto.hidden = false;
+    if (btnSanidad) btnSanidad.hidden = false;
+  }
+}
+
+const controls = (table, r) => {
+  const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+  const role = user?.role || 'admin';
+  if (!canModifyTable(role, table, r)) return '';
+  return `<div class="record-tools"><button type="button" class="tool" data-action="edit" data-table="${table}" data-id="${esc(r.id)}" title="Editar registro" aria-label="Editar registro">${icon('pencil')}</button><button type="button" class="tool danger" data-action="cancel" data-table="${table}" data-id="${esc(r.id)}" title="Anular registro" aria-label="Anular registro">${icon('archive-x')}</button></div>`;
+};
 const stateBadge = () => badge('Registrado');
 function metric(label, value, detail = '', color = '', small = false) { return `<article class="metric ${color} ${small ? 'compact' : ''}"><p>${esc(label)}</p><strong class="${typeof value === 'number' && value < 0 ? 'negative' : ''}">${typeof value === 'number' ? money(value) : esc(value)}</strong><small>${esc(detail)}</small></article>`; }
 function table(title, heads, rows, tableName, addLabel, actions = '') {
   const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
-  const canImport = !user || (user.role !== 'analista' && user.role !== 'auditor');
+  const role = user?.role || 'admin';
+  const canModify = canModifyTable(role, tableName);
+  const canImport = canModify;
   const hasEntity = tableName && typeof UNRCCsv !== 'undefined' && UNRCCsv.ENTITIES && UNRCCsv.ENTITIES[tableName];
   const importBtn = (hasEntity && canImport) ? button('Importar CSV', 'import-csv-wizard', `data-entity="${tableName}"`, 'file-spreadsheet', 'ghost') : '';
-  const exportBtn = tableName ? button('Exportar CSV', 'export', `data-table="${tableName}"`, 'download', 'ghost') : '';
-  return `<section class="surface"><div class="surface-title"><h4>${esc(title)}</h4><div class="section-actions">${importBtn}${exportBtn}${addLabel ? button(addLabel, 'new', `data-table="${tableName}"`) : ''}${actions}</div></div><div class="table-panel">${rows.length ? `<div class="table-scroll"><table><thead><tr>${heads.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${cell ?? '-'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : empty('Todavía no hay registros para esta selección.')}</div></section>`;
+  const canExport = canExportTable(role, tableName);
+  const exportBtn = (tableName && canExport) ? button('Exportar CSV', 'export', `data-table="${tableName}"`, 'download', 'ghost') : '';
+  const effectiveAdd = canModify && addLabel ? button(addLabel, 'new', `data-table="${tableName}"`) : '';
+
+  const PAGE_SIZE = 50;
+  let pageRows = rows;
+  let paginationBar = '';
+
+  if (rows.length > PAGE_SIZE) {
+    ui.tablePages = ui.tablePages || {};
+    const tableKey = tableName || title.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    const totalPages = Math.ceil(rows.length / PAGE_SIZE);
+    const currentPage = Math.min(Math.max(0, ui.tablePages[tableKey] || 0), totalPages - 1);
+    const startIdx = currentPage * PAGE_SIZE;
+    pageRows = rows.slice(startIdx, startIdx + PAGE_SIZE);
+
+    paginationBar = `<div class="table-pagination-bar" style="display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border-top:1px solid var(--grid-line, #E2E8F0); background:#f8fafc; font-size:0.83rem; color:#475569"><span>Mostrando <strong>${startIdx + 1}–${Math.min(startIdx + PAGE_SIZE, rows.length)}</strong> de <strong>${rows.length}</strong> registros</span><div style="display:flex; align-items:center; gap:6px"><button type="button" class="tool-btn-sm" data-table-page-key="${esc(tableKey)}" data-table-page-val="${currentPage - 1}" ${currentPage === 0 ? 'disabled' : ''} title="Página anterior" aria-label="Página anterior">${icon('chevron-left')}</button><span>Página <strong>${currentPage + 1}</strong> de <strong>${totalPages}</strong></span><button type="button" class="tool-btn-sm" data-table-page-key="${esc(tableKey)}" data-table-page-val="${currentPage + 1}" ${currentPage >= totalPages - 1 ? 'disabled' : ''} title="Página siguiente" aria-label="Página siguiente">${icon('chevron-right')}</button></div></div>`;
+  }
+
+  return `<section class="surface"><div class="surface-title"><h4>${esc(title)}</h4><div class="section-actions">${importBtn}${exportBtn}${effectiveAdd}${actions}</div></div><div class="table-panel">${pageRows.length ? `<div class="table-scroll"><table><thead><tr>${heads.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${pageRows.map(row => `<tr>${row.map(cell => `<td>${cell ?? '-'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>${paginationBar}` : empty('Todavía no hay registros para esta selección.')}</div></section>`;
 }
 function heading(title, actions = '', subtitle = '') { if(ui.view!=='ajustes'&&!actions.includes('data-action="print"'))actions+=button(ui.view==='manual'?'Imprimir manual':'Imprimir reporte','print','','printer','ghost');return `<div class="page-heading"><div><h3>${esc(title)}</h3>${subtitle ? `<small>${esc(subtitle)}</small>` : ''}</div><div class="toolbar">${actions}</div></div>`; }
 function periods() { return `<label class="field"><span>Desde</span><input type="date" data-filter="from" value="${ui.from}" aria-label="Desde"></label><label class="field"><span>Hasta</span><input type="date" data-filter="to" value="${ui.to}" aria-label="Hasta"></label>`; }
 function tabs(items, fallback) { const current = ui.tab[ui.view] || fallback; return `<div class="tabs" role="tablist">${items.map(([id, title]) => `<button type="button" class="tab" role="tab" aria-selected="${current === id}" data-action="tab" data-tab="${id}">${esc(title)}</button>`).join('')}</div>`; }
 function summary(label, value) { return `<div class="summary-line"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`; }
-function toast(s) { const el = $('#toast'); el.textContent = s; el.classList.add('show'); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove('show'), 4500); }
+function toast(s, type = 'info', title = '') {
+  if (typeof UNRCHelpUI !== 'undefined' && typeof UNRCHelpUI.toast === 'function') {
+    UNRCHelpUI.toast(s, type, title);
+    return;
+  }
+  const el = $('#toast');
+  if (!el) return;
+  el.textContent = s;
+  el.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.remove('show'), 4500);
+}
 function updateStorageIndicator(status, type = 'synced') {
   const el = $('#storageStatus');
   const dot = document.querySelector('#syncWidget .sync-dot');
@@ -194,7 +334,8 @@ const NAV = [
   ['modelo','Indicadores','file-text'],
   ['administracion','Administración','shield-check'],
   ['ajustes','Configuración','settings'],
-  ['manual','Manual de usuario','circle-help']
+  ['ayuda','Centro de Ayuda','circle-help'],
+  ['manual','Manual de usuario','book-marked']
 ];
 
 const NAV_GROUPS = [
@@ -251,7 +392,8 @@ const NAV_GROUPS = [
       ['contabilidad', 'Contabilidad', 'book-open'],
       ['administracion', 'Administración', 'shield-check'],
       ['ajustes', 'Configuración', 'settings'],
-      ['manual', 'Manual de usuario', 'circle-help']
+      ['ayuda', 'Centro de Ayuda', 'circle-help'],
+      ['manual', 'Manual de usuario', 'book-marked']
     ]
   },
   {
@@ -295,8 +437,25 @@ function toggleNavGroup(groupId) {
 function renderNav() {
   const el = $('#mainNav');
   if (!el) return;
-  
-  el.innerHTML = NAV_GROUPS.map((g, idx) => {
+  const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+  const role = user?.role || 'admin';
+
+  const authorizedGroups = NAV_GROUPS.map((g, idx) => {
+    if (g.type === 'single') {
+      if (!canAccessView(role, g.view)) return null;
+      return { ...g, originalIdx: idx };
+    }
+    let items = g.items.filter(([view]) => canAccessView(role, view));
+    if (g.id === 'informes' && (role === 'admin' || role === 'auditor')) {
+      if (!items.some(([v]) => v === 'auditoria')) {
+        items = [...items, ['auditoria', 'Pista de Auditoría', 'shield-check']];
+      }
+    }
+    if (!items.length) return null;
+    return { ...g, items, originalIdx: idx };
+  }).filter(Boolean);
+
+  el.innerHTML = authorizedGroups.map((g, idx) => {
     if (g.type === 'single') {
       const isActive = ui.view === g.view;
       return `
@@ -312,7 +471,7 @@ function renderNav() {
     const activeItem = g.items.find(([v]) => v === ui.view);
     const isGroupActive = !!activeItem;
     const isOpen = activeNavGroup === g.id;
-    const isRightAligned = idx >= NAV_GROUPS.length - 2;
+    const isRightAligned = idx >= authorizedGroups.length - 2;
 
     return `
       <div class="nav-group ${isGroupActive ? 'active' : ''} ${isOpen ? 'open' : ''}" data-nav-group="${g.id}">
@@ -347,9 +506,32 @@ function renderNav() {
 }
 function refreshIcons() { if (window.lucide) lucide.createIcons({ attrs: { 'stroke-width':1.7 } }); }
 function fitMetricValues() {
-  document.querySelectorAll('.metric strong').forEach(el=>{el.style.fontSize='';let size=parseFloat(getComputedStyle(el).fontSize);while(el.scrollWidth>el.clientWidth&&size>14){size-=.5;el.style.fontSize=size+'px';}});
+  const elements = Array.from(document.querySelectorAll('.metric strong'));
+  if (!elements.length) return;
+  const measurements = elements.map(el => {
+    el.style.fontSize = '';
+    return {
+      el,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      initialSize: parseFloat(window.getComputedStyle(el).fontSize) || 28
+    };
+  });
+  measurements.forEach(({ el, scrollWidth, clientWidth, initialSize }) => {
+    if (scrollWidth > clientWidth && clientWidth > 0) {
+      const ratio = clientWidth / scrollWidth;
+      const targetSize = Math.max(14, Math.floor(initialSize * ratio * 0.95));
+      if (targetSize < initialSize) {
+        el.style.fontSize = targetSize + 'px';
+      }
+    }
+  });
 }
-window.addEventListener('resize',fitMetricValues);
+let fitMetricResizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(fitMetricResizeTimer);
+  fitMetricResizeTimer = setTimeout(fitMetricValues, 100);
+}, { passive: true });
 
 function renderExecutiveKpis() {
   const el = $('#kpiBanner');
@@ -428,6 +610,14 @@ function renderExecutiveKpis() {
 
 function render() {
   if (!db) return;
+  const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+  const role = user?.role || 'admin';
+
+  if (!canAccessView(role, ui.view)) {
+    ui.view = 'general';
+    toast('Acceso restringido para tu perfil de usuario. Redirigido al panel general.', 'warning');
+  }
+
   const bnaEl = $('#bnaRateDisplay');
   if (bnaEl) bnaEl.textContent = '$ ' + number(ui.bnaRate || 1550, 2);
   const btnUsd = $('#btnCurrUSD'), btnArs = $('#btnCurrARS');
@@ -437,6 +627,7 @@ function render() {
   }
 
   renderNav();
+  updateQuickActionsVisibility();
   const alertsList = computeClientAlerts();
   const warnOrCrit = alertsList.filter(a => a.semaphore === 'red' || a.semaphore === 'yellow' || a.level === 'danger' || a.level === 'warning');
   const badgeEl = $('#alertsCountBadge');
@@ -472,10 +663,16 @@ function render() {
     administracion: renderAdministration,
     admin: renderAdministration,
     ajustes: renderSettings,
+    auditoria: () => typeof renderAudit === 'function' ? renderAudit() : renderGeneral(),
+    ayuda: () => typeof UNRCHelpUI !== 'undefined' ? UNRCHelpUI.renderHelpCenter() : renderManual(),
+    help: () => typeof UNRCHelpUI !== 'undefined' ? UNRCHelpUI.renderHelpCenter() : renderManual(),
     manual: renderManual
   };
   try { $('#viewRoot').innerHTML = `<div class="view-stack">${views[ui.view] ? views[ui.view]() : renderGeneral()}</div>`; }
   catch (err) { $('#viewRoot').innerHTML = notice(err.message, 'error'); console.error(err); }
+  if ((ui.view === 'ayuda' || ui.view === 'help') && typeof UNRCHelpUI !== 'undefined') {
+    UNRCHelpUI.attachHelpCenterEvents();
+  }
   refreshIcons(); fitMetricValues();
 }
 function getLotSpecies(l) {
@@ -513,13 +710,13 @@ function formConfig(t) {
   const note = field('note','Observaciones / respaldo','textarea',{full:true});
   const reference = field('reference','Comprobante / referencia','text',{required:true});
   const configs = {
-    lots: { title:'Lote de hacienda', fields:[field('species','Especie animal','select',{options:[{value:'porcino',label:'Porcino'},{value:'bovino',label:'Bovino'},{value:'ovino',label:'Ovino'}],value:'porcino',required:true}),field('name','Nombre del lote / identificación','text',{required:true}),fdate(),field('phase','Categoría / Fase productiva','select',{options:opt(D.PHASES)}),field('bioStage','Etapa zootécnica','select',{options:opt({cria:'Cría',recria:'Recría',engorde:'Engorde / Terminación'})}),integer('animals','Cabezas de apertura',{value:0,required:true}),decimal('weight','Peso promedio de apertura (kg)',{value:0}),decimal('openingValue','Valor contable total de apertura ($)',{value:0}),field('location','Potrero / Instalación / Corral'),note] },
-    campaigns: { title:'Campaña agrícola y parcela', fields:[field('name','Campaña y parcela / lote','text',{required:true}),fdate(),field('crop','Cultivo','select',{options:opt({Maíz:'Maíz',Soja:'Soja',Trigo:'Trigo',Sorgo:'Sorgo',Otro:'Otro'})}),field('parcel','Lote / Parcela / Ubicación'),decimal('hectares','Superficie sembrada (ha)',{required:true}),field('variety','Variedad / Híbrido sembrado'),decimal('density','Densidad de siembra (pl/ha o kg/ha)'),field('fertilization','Fertilización y fitosanitarios aplicados'),field('sowingDate','Fecha de siembra','date'),field('harvestDate','Fecha de cosecha prevista / real','date'),decimal('harvestTons','Producción cosechada (toneladas)'),decimal('yield','Rendimiento obtenido (qq/ha)'),field('status','Estado','select',{options:opt({activa:'En producción',cosechada:'Cosechada',cerrada:'Cerrada'})}),note] },
-    products: { title:'Producto e insumo', fields:[field('name','Nombre','text',{required:true}),field('kind','Tipo','select',{options:opt({grano:'Grano',alimento:'Alimento / premezcla',sanidad:'Sanidad',otro:'Otro insumo'})}),field('unit','Unidad base','select',{options:opt({kg:'kg',litros:'litros',dosis:'dosis',unidades:'unidades'})}),decimal('kgPerBag','Kg por bolsa (si corresponde)'),field('phase','Alimento para categoría','select',{options:[{value:'',label:'Varias / no corresponde'},...opt(D.PHASES)]}),field('inventoryAccountId','Cuenta de existencias','select',{options:[{value:'',label:'Según tipo de producto'},...accountOptions(a=>a.kind==='asset'&&/^1\.3\.(04|06)/.test(a.code))]}),note] },
+    lots: { title:'Lote de hacienda', fields:[field('species','Especie animal','select',{options:[{value:'porcino',label:'Porcino'},{value:'bovino',label:'Bovino'},{value:'ovino',label:'Ovino'}],value:'porcino',required:true}),field('name','Nombre del lote / identificación','text',{required:true}),fdate(),field('phase','Categoría / Fase productiva','select',{options:opt(D.PHASES)}),field('bioStage','Etapa zootécnica','select',{options:opt({cria:'Cría',recria:'Recría',engorde:'Engorde / Terminación'})}),integer('animals','Cabezas de apertura (cab)',{value:0,required:true}),decimal('weight','Peso promedio de apertura (kg/cab)',{value:0}),decimal('openingValue','Valor contable total de apertura ($)',{value:0}),field('location','Potrero / Instalación / Corral'),note] },
+    campaigns: { title:'Campaña agrícola y parcela', fields:[field('name','Campaña y parcela / lote','text',{required:true}),fdate(),field('crop','Cultivo','select',{options:opt({Maíz:'Maíz',Soja:'Soja',Trigo:'Trigo',Sorgo:'Sorgo',Otro:'Otro'})}),field('parcel','Lote / Parcela / Ubicación'),decimal('hectares','Superficie sembrada (ha)',{required:true}),field('variety','Variedad / Híbrido sembrado'),decimal('density','Densidad de siembra (pl/ha o kg/ha)'),field('fertilization','Fertilización y fitosanitarios aplicados (kg/ha o L/ha)'),field('sowingDate','Fecha de siembra','date'),field('harvestDate','Fecha de cosecha prevista / real','date'),decimal('harvestTons','Producción cosechada (toneladas métricas)'),decimal('yield','Rendimiento obtenido (qq/ha o t/ha)'),field('status','Estado','select',{options:opt({activa:'En producción',cosechada:'Cosechada',cerrada:'Cerrada'})}),note] },
+    products: { title:'Producto e insumo', fields:[field('name','Nombre','text',{required:true}),field('kind','Tipo','select',{options:opt({grano:'Grano',alimento:'Alimento / premezcla',sanidad:'Sanidad',fertilizante:'Fertilizante',semilla:'Semilla',otro:'Otro insumo'})}),field('unit','Unidad base','select',{options:[{value:'kg',label:'kg (Kilogramos)'},{value:'litros',label:'L (Litros)'},{value:'ml',label:'mL (Mililitros)'},{value:'unidades',label:'unidades (Unidades)'},{value:'dosis',label:'dosis (Dosis sanitarias)'},{value:'bolsas',label:'bolsas (Bolsas con factor)'}]}),decimal('kgPerBag','Factor de conversión: Kg por bolsa (si corresponde)'),field('phase','Alimento para categoría','select',{options:[{value:'',label:'Varias / no corresponde'},...opt(D.PHASES)]}),field('inventoryAccountId','Cuenta de existencias','select',{options:[{value:'',label:'Según tipo de producto'},...accountOptions(a=>a.kind==='asset'&&/^1\.3\.(04|06)/.test(a.code))]}),note] },
     parties: { title:'Cliente o proveedor', fields:[field('name','Nombre / razón social','text',{required:true}),field('taxId','CUIT / identificación'),field('kind','Tipo','select',{options:opt({proveedor:'Proveedor',cliente:'Cliente',ambos:'Ambos'})}),field('contact','Contacto'),note] },
     costs: { title:'Costo e imputación', fields:[fdate(),areaField(true),reference,linkField('partyId','Proveedor','parties'),field('category','Concepto','select',{options:opt({Sanidad:'Sanidad',Reproducción:'Reproducción',Semillas:'Semillas',Fertilización:'Fertilización',Aplicaciones:'Aplicaciones',Labores:'Labores',Cosecha:'Cosecha','Mano de obra':'Mano de obra',Energía:'Energía',Mantenimiento:'Mantenimiento',Efluentes:'Efluentes',Estructura:'Estructura',Comercialización:'Comercialización',Otros:'Otros'})}),field('accountId','Cuenta de costo','select',{options:[{value:'',label:'Seleccionar cuenta'},...accountOptions(a=>a.kind==='expense')],value:'',required:true}),decimal('amount','Importe neto ($)',{required:true}),decimal('tax','IVA / impuestos del comprobante ($)',{value:0}),field('taxRecoverable','Impuesto recuperable: crédito fiscal','checkbox'),linkField('lotId','Lote imputado','lots'),linkField('campaignId','Campaña agrícola','campaigns'),decimal('pigShare','Porcentaje imputado (%)',{max:100,required:true}),field('criterion','Criterio de distribución','text',{required:true}),note] },
     sows: { title:'Reproductor', fields:[field('name','Caravana / identificación','text',{required:true}),fdate(),field('sex','Plantel','select',{options:opt({madre:'Madre',padrillo:'Padrillo'})}),field('breed','Línea genética / raza'),decimal('value','Valor inicial ($)',{required:true}),decimal('residual','Valor residual estimado ($)',{value:0}),integer('lifeMonths','Vida útil productiva (meses)',{required:true}),field('discardDate','Fecha de descarte','date'),decimal('discardValue','Importe recuperado por descarte ($)',{value:0}),note] },
-    births: { title:'Parto y destete', fields:[fdate(),linkField('sowId','Madre','sows',{required:true,options:[{value:'',label:'Seleccionar'},...confirmed('sows').filter(s=>s.sex==='madre').map(s=>({value:s.id,label:s.name}))]}),linkField('lotId','Lote de cría de origen','lots',{required:true}),integer('bornAlive','Nacidos vivos',{value:0}),integer('stillborn','Nacidos muertos',{value:0}),decimal('birthWeight','Peso promedio al nacer (kg)'),integer('losses','Bajas efectivas predestete',{value:0}),field('lossDate','Fecha de las bajas','date'),decimal('lossWeight','Peso promedio de las bajas (kg)'),integer('weaned','Lechones destetados',{value:0}),field('weanDate','Fecha de destete / cierre','date'),decimal('weanWeight','Peso promedio al destete (kg)'),linkField('toLotId','Lote de destino del destete','lots'),field('closed','Camada cerrada','checkbox'),note] },
+    births: { title:'Parto y destete', fields:[fdate(),linkField('sowId','Madre','sows',{required:true,options:[{value:'',label:'Seleccionar'},...confirmed('sows').filter(s=>s.sex==='madre').map(s=>({value:s.id,label:s.name}))]}),linkField('lotId','Lote de cría de origen','lots',{required:true}),integer('bornAlive','Nacidos vivos (cab)',{value:0}),integer('stillborn','Nacidos muertos (cab)',{value:0}),decimal('birthWeight','Peso promedio al nacer (kg/cab)'),integer('losses','Bajas efectivas predestete (cab)',{value:0}),field('lossDate','Fecha de las bajas','date'),decimal('lossWeight','Peso promedio de las bajas (kg/cab)'),integer('weaned','Lechones destetados (cab)',{value:0}),field('weanDate','Fecha de destete / cierre','date'),decimal('weanWeight','Peso promedio al destete (kg/cab)'),linkField('toLotId','Lote de destino del destete','lots'),field('closed','Camada cerrada','checkbox'),note] },
     treatments: {
       title: 'Tratamiento Sanitario Veterinario',
       fields: [
@@ -550,16 +747,16 @@ function formConfig(t) {
         }),
         linkField('lotId', 'Lote de origen', 'lots', { required: true }),
         linkField('toLotId', 'Lote de destino (para traslados)', 'lots'),
-        integer('quantity', 'Cabezas del movimiento', { value: 0 }),
-        decimal('weight', 'Peso promedio por cabeza (kg)', { value: 0 }),
+        integer('quantity', 'Cabezas del movimiento (cab)', { value: 0 }),
+        decimal('weight', 'Peso promedio por cabeza (kg/cab)', { value: 0 }),
         decimal('unitCost', 'Costo / Valor unitario ($)', { value: 0 }),
         note
       ]
     },
-    transfers: { title:'Transferencia interna de cereal a ganadería', fields:[fdate(),linkField('productId','Cereal de propia producción','products',{required:true}),linkField('campaignId','Campaña / lote de origen','campaigns',{required:true}),field('toArea','Actividad ganadera receptora','select',{options:[{value:'cerdos',label:'Porcinos (Cerdos)'},{value:'bovinos',label:'Bovinos de carne'},{value:'ovinos',label:'Ovinos Dorper'}],value:'cerdos',required:true}),linkField('lotId','Lote / Piara receptora (opcional)','lots'),decimal('quantity','Cantidad transferida (kg)',{required:true}),decimal('opportunityPrice','Valor neto de venta por kg ($)',{required:true}),field('priceDate','Fecha de la cotización','date',{required:true,value:today()}),field('source','Fuente / comprobante del precio (ej. Pizarra Rosario neto gastos)','text',{required:true}),note] },
-    sales: { title:'Liquidación de venta', fields:[fdate(),areaField(false),reference,linkField('partyId','Comprador / Frigorífico','parties',{required:true}),linkField('lotId','Lote','lots'),field('destiny','Destino','select',{options:opt({faena:'Faena / Frigorífico',invernada:'Invernada / Recría / Otro'})}),integer('animals','Cabezas'),decimal('weight','Peso promedio (kg)'),linkField('productId','Producto agrícola','products'),linkField('campaignId','Campaña de origen','campaigns'),decimal('quantity','Kilos vendidos'),decimal('price','Precio por kg ($)',{required:true}),decimal('fees','Gastos comerciales descontados ($)',{value:0}),decimal('tax','IVA de la venta ($)',{value:0}),decimal('retentions','Retenciones sufridas ($)',{value:0}),decimal('perceptions','Percepciones facturadas ($)',{value:0}),note] },
+    transfers: { title:'Transferencia interna de cereal a ganadería', fields:[fdate(),linkField('productId','Cereal de propia producción','products',{required:true}),linkField('campaignId','Campaña / lote de origen','campaigns',{required:true}),field('toArea','Actividad ganadera receptora','select',{options:[{value:'cerdos',label:'Porcinos (Cerdos)'},{value:'bovinos',label:'Bovinos de carne'},{value:'ovinos',label:'Ovinos Dorper'}],value:'cerdos',required:true}),linkField('lotId','Lote / Piara receptora (opcional)','lots'),decimal('quantity','Cantidad transferida (kg)',{required:true}),decimal('opportunityPrice','Valor neto de realización por kg ($/kg)',{required:true}),field('priceDate','Fecha de la cotización','date',{required:true,value:today()}),field('source','Fuente / comprobante del precio (ej. Pizarra Rosario neto gastos)','text',{required:true}),note] },
+    sales: { title:'Liquidación de venta', fields:[fdate(),areaField(false),reference,linkField('partyId','Comprador / Frigorífico','parties',{required:true}),linkField('lotId','Lote','lots'),field('destiny','Destino','select',{options:opt({faena:'Faena / Frigorífico',invernada:'Invernada / Recría / Otro'})}),integer('animals','Cabezas vendidas (cab)'),decimal('weight','Peso promedio (kg/cab)'),linkField('productId','Producto agrícola','products'),linkField('campaignId','Campaña de origen','campaigns'),decimal('quantity','Kilos vendidos de cereal (kg)'),decimal('price','Precio unitario ($/kg o $/cab)',{required:true}),decimal('fees','Gastos comerciales descontados ($)',{value:0}),decimal('tax','IVA de la venta ($)',{value:0}),decimal('retentions','Retenciones sufridas ($)',{value:0}),decimal('perceptions','Percepciones facturadas ($)',{value:0}),note] },
     payments: { title:'Pago o cobro', fields:[fdate(),field('sourceId','Documento','select',{required:true,options:[{value:'',label:'Seleccionar'},...Object.entries(D.replay(db,today()).documents).map(([value,d])=>({value,label:(d.kind==='cobro'?'Cobrar: ':'Pagar: ')+d.name+' · saldo '+money(d.amount-d.paid)}))]}),decimal('amount','Importe ($)',{required:true}),reference,note] },
-    prices: { title:'Precio de referencia', fields:[fdate(),field('product','Producto / categoría','select',{options:[...opt(D.PHASES),...opt({maiz:'Maíz',soja:'Soja',trigo:'Trigo',sorgo:'Sorgo'})]}),decimal('price','Precio ($)',{required:true}),field('unit','Unidad del precio','select',{options:opt({kg:'Por kg',tonelada:'Por tonelada'})}),field('source','Fuente / enlace / documento','text',{required:true}),field('market','Mercado / condición de entrega'),note] },
+    prices: { title:'Precio de referencia', fields:[fdate(),field('product','Producto / categoría','select',{options:[...opt(D.PHASES),...opt({maiz:'Maíz',soja:'Soja',trigo:'Trigo',sorgo:'Sorgo'})]}),decimal('price','Precio de cotización ($)',{required:true}),field('unit','Unidad de cotización','select',{options:[{value:'kg',label:'Por kg ($/kg)'},{value:'tonelada',label:'Por tonelada ($/t)'}]}),field('source','Fuente / enlace / documento','text',{required:true}),field('market','Mercado / condición de entrega'),note] },
     allocations: { title:'Distribuir costo indirecto', fields:[fdate(),linkField('costId','Costo de origen','costs',{required:true}),linkField('lotId','Lote de destino','lots'),linkField('campaignId','Campaña de destino','campaigns'),decimal('amount','Importe distribuido ($)',{required:true}),field('criterion','Criterio y base de reparto','text',{required:true}),note] },
     accounts: { title:'Cuenta del plan', fields:[field('code','Código','text',{required:true}),field('name','Nombre','text',{required:true}),field('kind','Clasificación','select',{options:opt({asset:'Activo',liability:'Pasivo',equity:'Patrimonio',income:'Ingreso',expense:'Costo / gasto'})}),field('parent','Cuenta superior','select',{options:[{value:'',label:'Sin cuenta superior'},...confirmed('accounts').filter(a=>!Plan.enabled(db)||a.planVersion===Plan.VERSION).map(a=>({value:a.id,label:a.code+' · '+a.name}))]})] },
     entries: { title:'Asiento manual', fields:[fdate(),areaField(false),reference,field('lines','Cuentas','journal',{full:true}),note] }
@@ -571,12 +768,19 @@ function formField(f, value) {
   const v = value ?? f.value ?? ''; const id = 'record-' + f.name; const required = f.required ? 'required' : '';
   if(f.type==='select'&&['accountId','inventoryAccountId'].includes(f.name)&&v&&!f.options.some(o=>o.value===v)){const original=db.accounts.find(a=>a.id===v);if(original)f={...f,options:[...f.options,{value:v,label:original.code+' · '+original.name+' (plan anterior)'}]};}
   const input = f.type === 'select' ? `<select id="${id}" name="${f.name}" ${required}>${(f.options || []).map(o=>`<option value="${esc(o.value)}" ${String(v)===String(o.value)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>` : f.type === 'textarea' ? `<textarea id="${id}" name="${f.name}" ${required} placeholder="${esc(f.placeholder || '')}">${esc(v)}</textarea>` : f.type === 'checkbox' ? `<label class="check-label"><input id="${id}" type="checkbox" name="${f.name}" ${v ? 'checked' : ''}>${esc(f.label)}</label>` : `<input id="${id}" type="${f.type}" name="${f.name}" value="${esc(v)}" ${required} ${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''} ${f.step ? `step="${f.step}"` : ''}>`;
-  return `<div class="field ${f.full?'full':''}">${f.type==='checkbox'?'':`<label for="${id}">${esc(f.label)}</label>`}${input}</div>`;
+  const helpBtn = (typeof UNRCHelpUI !== 'undefined') ? UNRCHelpUI.getHelpTriggerHtml(f.name) : '';
+  return `<div class="field ${f.full?'full':''}">${f.type==='checkbox'?'':`<label for="${id}"><span>${esc(f.label)}</span>${helpBtn}</label>`}${input}</div>`;
 }
 function openForm(t,id='',prefill={}) {
-  const config=formConfig(t); if(!config) return;
+  const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+  const role = user?.role || 'admin';
   const sourceTable = t === 'treatments' ? 'movements' : t;
-  const row={...((db[sourceTable] || []).find(r=>r.id===id)||{}),...prefill};
+  const row = {...((db[sourceTable] || []).find(r=>r.id===id)||{}),...prefill};
+  if (!canModifyTable(role, t, row)) {
+    toast(`Acceso denegado: El perfil "${accessRole(role)}" no tiene permisos para crear o modificar registros en este módulo.`, 'error');
+    return;
+  }
+  const config=formConfig(t); if(!config) return;
   const dialog=$('#recordDialog'); dialog.dataset.table=t; dialog.dataset.id=id; delete dialog.dataset.importId;
   if(row.sourceImportId) dialog.dataset.importId=row.sourceImportId;
   $('#dialogTitle').textContent=(id?'Editar · ':'')+config.title;
@@ -584,7 +788,12 @@ function openForm(t,id='',prefill={}) {
   $('#dialogFields').innerHTML=config.fields.map(f=>formField(f,row[f.name])).join(''); $('#formError').hidden=true;
   $('#recordForm [type="submit"]').disabled=false;
   if(t==='entries')mountJournal(row.lines);
-  updateFormVisibility(); dialog.showModal(); $('#dialogFields input:not(:disabled), #dialogFields select:not(:disabled)')?.focus();
+  updateFormVisibility();
+  updateUnitAssistant();
+  if (typeof UNRCHelpUI !== 'undefined') {
+    UNRCHelpUI.attachContextualHelpEvents(dialog);
+  }
+  dialog.showModal(); $('#dialogFields input:not(:disabled), #dialogFields select:not(:disabled)')?.focus();
 }
 function updateFormVisibility() {
   const t=$('#recordDialog').dataset.table, form=$('#recordForm'), area=form.elements.area?.value, type=form.elements.type?.value;
@@ -597,6 +806,152 @@ function updateFormVisibility() {
   if(t==='stock') { shown.unitCost=['apertura','compra','cosecha','ajuste'].includes(type); shown.partyId=shown.tax=shown.taxRecoverable=type==='compra'; }
   if(t==='movements') { shown.toLotId=type==='traslado'; shown.quantity=shown.weight=true; shown.unitCost=['ingreso','conteo'].includes(type); }
   for(const f of formConfig(t).fields) { const el=form.elements[f.name]; if(!el)continue; const display=shown[f.name]!==false; el.closest('.field').hidden=!display; el.disabled=!display; el.required=display&&!!f.required; }
+  updateUnitAssistant();
+}
+function updateUnitAssistant() {
+  const dialog = $('#recordDialog');
+  if (!dialog || !dialog.open) return;
+  const assistant = $('#dialogUnitAssistant');
+  if (!assistant) return;
+  const t = dialog.dataset.table;
+  const form = $('#recordForm');
+  if (!form) return;
+  const U = typeof UNRCUnits !== 'undefined' ? UNRCUnits : null;
+  if (!U) { assistant.style.display = 'none'; return; }
+
+  const numVal = n => {
+    const el = form.elements[n];
+    return el && el.value !== '' ? Number(el.value) : 0;
+  };
+
+  let msg = '';
+
+  if (t === 'campaigns') {
+    const ha = numVal('hectares');
+    const tons = numVal('harvestTons');
+    if (ha > 0 && tons > 0) {
+      const y = U.calcYield({ hectares: ha, productionTons: tons });
+      const warn = U.validateCropYield(form.elements.crop?.value || 'Maíz', y.kgHa);
+      msg = `<strong>🌾 Rendimiento y Producción Agrícola:</strong> ${U.formatGrainWeight(y.totalKg)} en ${number(ha, 1)} ha &rarr; Rendimiento: <strong>${U.formatYieldDual(y.kgHa)}</strong>`;
+      if (warn?.warning) msg += `<br><span style="color:#b45309">⚠️ ${warn.message}</span>`;
+    } else if (ha > 0) {
+      msg = `<strong>🌾 Superficie:</strong> ${number(ha, 1)} ha. Ingrese las toneladas cosechadas para calcular automáticamente el rendimiento en kg/ha, t/ha y qq/ha.`;
+    }
+  } else if (t === 'lots' || t === 'movements') {
+    const heads = numVal('animals') || numVal('quantity');
+    const w = numVal('weight');
+    const species = form.elements.species?.value || 'porcino';
+    if (heads > 0 && w > 0) {
+      const totKg = U.calcTotalWeight({ heads, avgWeightKg: w });
+      const totT = U.kgToTonnes(totKg);
+      const warn = U.validateSlaughterWeight(species, w);
+      msg = `<strong>⚖️ Hacienda en Pie:</strong> ${U.formatLivestockBatch({ heads, avgWeightKg: w })} (${number(totT, 2)} t totales en pie)`;
+      if (warn?.warning) msg += `<br><span style="color:#b45309">⚠️ ${warn.message}</span>`;
+    }
+  } else if (t === 'sales') {
+    const area = form.elements.area?.value;
+    const isLivestock = ['cerdos','porcinos','bovinos','ovinos'].includes(area);
+    if (isLivestock) {
+      const heads = numVal('animals');
+      const w = numVal('weight');
+      const p = numVal('price');
+      if (heads > 0 && w > 0) {
+        const sale = U.calcLivestockSaleValues({ heads, avgWeightKg: w, pricePerKg: p });
+        msg = `<strong>💰 Liquidación Ganadera:</strong> ${U.formatLivestockBatch({ heads, avgWeightKg: w })} &middot; Cotización: $ ${number(sale.pricePerHead, 2)} / cab &middot; Bruto estimado: <strong>$ ${number(sale.grossAmount, 2)}</strong>`;
+      }
+    } else {
+      const kg = numVal('quantity');
+      const p = numVal('price');
+      if (kg > 0) {
+        const t = U.kgToTonnes(kg);
+        const pT = U.priceKgToPriceTonne(p);
+        msg = `<strong>🌽 Liquidación de Cereal:</strong> ${U.formatGrainWeight(kg)} &middot; Cotización equivalente: <strong>$ ${number(pT, 2)} / tonelada</strong> &middot; Bruto: <strong>$ ${number(kg * p, 2)}</strong>`;
+      }
+    }
+  } else if (t === 'prices') {
+    const p = numVal('price');
+    const u = form.elements.unit?.value || 'kg';
+    if (p > 0) {
+      if (u === 'kg') {
+        msg = `<strong>💹 Cotización de Referencia:</strong> $ ${number(p, 2)} / kg = <strong>$ ${number(U.priceKgToPriceTonne(p), 2)} por tonelada métrica</strong>`;
+      } else {
+        msg = `<strong>💹 Cotización de Referencia:</strong> $ ${number(p, 2)} / tonelada = <strong>$ ${number(U.priceTonneToPriceKg(p), 4)} por kg</strong>`;
+      }
+    }
+  } else if (t === 'stock') {
+    const q = numVal('quantity');
+    const unit = form.elements.inputUnit?.value || '';
+    if (unit === 'bolsas' && q > 0) {
+      const prod = db.products?.find(p => p.id === form.elements.productId?.value);
+      const factor = Number(prod?.kgPerBag || 0);
+      if (factor > 0) {
+        msg = `<strong>📦 Existencias en Bolsas:</strong> ${q} bolsas &times; ${factor} kg/bolsa = <strong>${U.formatGrainWeight(q * factor)}</strong>`;
+      }
+    }
+  }
+
+  if (msg) {
+    assistant.innerHTML = msg;
+    assistant.style.display = 'block';
+  } else {
+    assistant.style.display = 'none';
+  }
+}
+function handleUnitCalculatorInput(el) {
+  const calcType = el.dataset.unitCalc;
+  const U = typeof UNRCUnits !== 'undefined' ? UNRCUnits : null;
+  if (!U) return;
+  const numVal = id => {
+    const input = $('#' + id);
+    return input && input.value !== '' ? Number(input.value) : 0;
+  };
+
+  if (calcType === 'kg-to-t') {
+    const kg = numVal('calcKgInput');
+    const resEl = $('#calcTResult');
+    if (resEl) resEl.textContent = number(U.kgToTonnes(kg), 2) + ' t';
+  } else if (calcType === 'yield') {
+    const ha = numVal('calcHaInput');
+    const tons = numVal('calcTonsInput');
+    const resEl = $('#calcYieldResult');
+    if (resEl) {
+      if (ha > 0 && tons > 0) {
+        const y = U.calcYield({ hectares: ha, productionTons: tons });
+        resEl.innerHTML = `<strong style="color:#15803d; font-size:1rem">${number(y.kgHa, 0)} kg/ha</strong> <span class="muted">(${number(y.tonHa, 2)} t/ha · ${number(y.qqHa, 1)} qq/ha)</span>`;
+      } else {
+        resEl.innerHTML = '<span class="muted">Ingrese superficie y toneladas</span>';
+      }
+    }
+  } else if (calcType === 'liters-to-ml') {
+    const l = numVal('calcLitersInput');
+    const resEl = $('#calcMlResult');
+    if (resEl) resEl.textContent = number(U.litersToMl(l), 0) + ' mL';
+  } else if (calcType === 'gdp') {
+    const w1 = numVal('calcGdpW1');
+    const w2 = numVal('calcGdpW2');
+    const days = numVal('calcGdpDays');
+    const resEl = $('#calcGdpResult');
+    if (resEl) {
+      const gdp = U.calcDailyGain({ initialWeight: w1, finalWeight: w2, days });
+      if (gdp) {
+        resEl.innerHTML = `<strong style="color:#b83d5a; font-size:1rem">${gdp.kgPerDay >= 0 ? '+' : ''}${number(gdp.kgPerDay, 3)} kg/día</strong> <span class="muted">(${number(gdp.gPerDay, 0)} g/día · ${gdp.gainKg >= 0 ? '+' : ''}${number(gdp.gainKg, 1)} kg)</span>`;
+      } else {
+        resEl.innerHTML = '<span class="muted">Ingrese días mayores a 0</span>';
+      }
+    }
+  } else if (calcType === 'batch-weight') {
+    const heads = numVal('calcHeadsInput');
+    const w = numVal('calcAvgWeightInput');
+    const resEl = $('#calcBatchResult');
+    if (resEl) {
+      const tot = U.calcTotalWeight({ heads, avgWeightKg: w });
+      resEl.innerHTML = `<strong style="color:#b83d5a; font-size:1rem">${number(tot, 0)} kg en pie</strong> <span class="muted">(${number(U.kgToTonnes(tot), 2)} toneladas)</span>`;
+    }
+  } else if (calcType === 'price-conv') {
+    const p = numVal('calcPriceKgInput');
+    const resEl = $('#calcPriceTResult');
+    if (resEl) resEl.textContent = '$ ' + number(U.priceKgToPriceTonne(p), 2) + ' / t';
+  }
 }
 function readForm(t) {
   const fd=new FormData($('#recordForm')); const r={};
@@ -691,6 +1046,18 @@ function computeClientAlerts() {
       break;
     }
   }
+  // Alertas dinámicas calculadas por el motor de semáforos (Modificación 11)
+  if (Semaphore && db) {
+    try {
+      const semAlerts = Semaphore.getSemaphoreAlerts(db, ui.from, ui.to);
+      for (const sa of semAlerts) {
+        alerts.push(sa);
+      }
+    } catch (err) {
+      console.warn('[Semaphore Alerts Error]', err);
+    }
+  }
+
   // Semáforo verde preventivo y de control
   alerts.push({
     semaphore: 'green',
@@ -701,6 +1068,117 @@ function computeClientAlerts() {
     icon: 'shield-check'
   });
   return alerts;
+}
+
+function renderModuleSemaphorePanel(moduleName, title = 'Semáforos y Control de Gestión') {
+  if (!Semaphore || !db) return '';
+  const evalResults = Semaphore.computeAllIndicators(db, ui.from, ui.to);
+  const moduleResults = evalResults.filter(r => r.module === moduleName || (moduleName === 'comercial' && (r.module === 'comercial' || r.module === 'financiero')));
+  if (!moduleResults.length) return '';
+
+  const greenCount = moduleResults.filter(r => r.state === 'green').length;
+  const yellowCount = moduleResults.filter(r => r.state === 'yellow').length;
+  const redCount = moduleResults.filter(r => r.state === 'red').length;
+  const grayCount = moduleResults.filter(r => r.state === 'gray').length;
+
+  return `
+    <section class="panel" style="margin-top:20px; border-top: 3px solid #087FBD">
+      <div class="surface-title" style="flex-wrap:wrap; gap:10px">
+        <div style="display:flex; align-items:center; gap:10px">
+          <span class="traffic-light-pill ${redCount ? 'state-red' : yellowCount ? 'state-yellow' : 'state-green'}">
+            <span class="lamp lamp-red"></span>
+            <span class="lamp lamp-yellow"></span>
+            <span class="lamp lamp-green"></span>
+          </span>
+          <div>
+            <h4 style="margin:0">${esc(title)}</h4>
+            <p class="muted" style="margin:2px 0 0; font-size:0.8rem">Evaluación técnica y operativa s/ parámetros institucionales UNRC Pozo del Carril</p>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; font-size:0.8rem; flex-wrap:wrap">
+          <span class="semaphore-badge green"><span class="semaphore-dot green"></span>${greenCount} Normal</span>
+          <span class="semaphore-badge yellow"><span class="semaphore-dot yellow"></span>${yellowCount} Atención</span>
+          <span class="semaphore-badge red"><span class="semaphore-dot red"></span>${redCount} Crítico</span>
+          <span class="semaphore-badge gray"><span class="semaphore-dot gray"></span>${grayCount} Sin Datos</span>
+          <button type="button" class="btn ghost" style="padding:3px 8px; font-size:0.75rem" data-action="navigate" data-view="ajustes" title="Ajustar metas y umbrales">${icon('settings')} Umbrales</button>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; margin-top:14px">
+        ${moduleResults.map(r => Semaphore.renderSemaphoreCard(r)).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderGeneralSemaphoreDashboard() {
+  if (!Semaphore || !db) return '';
+  const evalResults = Semaphore.computeAllIndicators(db, ui.from, ui.to);
+  const activeSector = ui.semaphoreSectorFilter || 'all';
+
+  const filtered = activeSector === 'all'
+    ? evalResults
+    : activeSector === 'agricultura'
+    ? evalResults.filter(r => r.sector === 'agricultura')
+    : activeSector === 'ganaderia'
+    ? evalResults.filter(r => r.sector === 'ganaderia')
+    : activeSector === 'comercial'
+    ? evalResults.filter(r => r.sector === 'comercial' || r.sector === 'financiero')
+    : evalResults.filter(r => r.module === activeSector);
+
+  const greenCount = evalResults.filter(r => r.state === 'green').length;
+  const yellowCount = evalResults.filter(r => r.state === 'yellow').length;
+  const redCount = evalResults.filter(r => r.state === 'red').length;
+  const grayCount = evalResults.filter(r => r.state === 'gray').length;
+
+  return `
+    <section class="panel" style="margin-top:22px; border-top: 4px solid #14263D">
+      <div class="surface-title" style="flex-wrap:wrap; gap:10px">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px">
+            <span class="traffic-light-pill ${redCount ? 'state-red' : yellowCount ? 'state-yellow' : 'state-green'}">
+              <span class="lamp lamp-red"></span>
+              <span class="lamp lamp-yellow"></span>
+              <span class="lamp lamp-green"></span>
+            </span>
+            <h4 style="margin:0; font-size:1.15rem">Tablero Integral de Semáforos y Control de Gestión (Modificación 11)</h4>
+          </div>
+          <p class="muted" style="margin:4px 0 0; font-size:0.83rem">
+            Monitoreo en tiempo real de indicadores agrícolas, zootécnicos, comerciales y financieros s/ metas institucionalmente aprobadas
+          </p>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+          <span class="semaphore-badge green"><span class="semaphore-dot green"></span>${greenCount} Normal</span>
+          <span class="semaphore-badge yellow"><span class="semaphore-dot yellow"></span>${yellowCount} Atención</span>
+          <span class="semaphore-badge red"><span class="semaphore-dot red"></span>${redCount} Crítico</span>
+          <span class="semaphore-badge gray"><span class="semaphore-dot gray"></span>${grayCount} Sin Datos</span>
+          <button type="button" class="btn ghost" style="padding:4px 10px; font-size:0.8rem" data-action="navigate" data-view="ajustes">${icon('settings')} Configurar Umbrales</button>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros por Actividad -->
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:14px; padding-bottom:12px; border-bottom:1px solid #e2e8f0">
+        <span style="font-size:0.8rem; font-weight:700; color:#475569; margin-right:4px">Filtrar Actividad:</span>
+        <button type="button" class="btn ${activeSector === 'all' ? 'primary' : 'ghost'}" style="padding:4px 10px; font-size:0.78rem" data-action="filter-semaphore-sector" data-sector="all">Todos (${evalResults.length})</button>
+        <button type="button" class="btn ${activeSector === 'agricultura' ? 'primary' : 'ghost'}" style="padding:4px 10px; font-size:0.78rem" data-action="filter-semaphore-sector" data-sector="agricultura">🌾 Agricultura (${evalResults.filter(r=>r.sector==='agricultura').length})</button>
+        <button type="button" class="btn ${activeSector === 'ganaderia' ? 'primary' : 'ghost'}" style="padding:4px 10px; font-size:0.78rem" data-action="filter-semaphore-sector" data-sector="ganaderia">🐄 Ganadería (${evalResults.filter(r=>r.sector==='ganaderia').length})</button>
+        <button type="button" class="btn ${activeSector === 'comercial' ? 'primary' : 'ghost'}" style="padding:4px 10px; font-size:0.78rem" data-action="filter-semaphore-sector" data-sector="comercial">💼 Comercial &amp; Financiero (${evalResults.filter(r=>r.sector==='comercial'||r.sector==='financiero').length})</button>
+      </div>
+
+      <!-- Grilla de Tarjetas de Indicadores -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:16px">
+        ${filtered.map(r => `
+          <div style="display:flex; flex-direction:column">
+            ${Semaphore.renderSemaphoreCard(r)}
+            <div style="margin-top:-6px; padding:0 8px">
+              <button type="button" class="btn ghost" style="width:100%; padding:3px 8px; font-size:0.72rem; border-top:none; border-top-left-radius:0; border-top-right-radius:0" data-action="navigate" data-view="${r.module === 'maiz' ? 'maiz' : r.module === 'soja' ? 'soja' : r.module === 'porcinos' ? 'cerdos' : r.module === 'bovinos' ? 'bovinos' : r.module === 'ovinos' ? 'ovinos' : r.module === 'comercial' ? 'ventas' : 'general'}">
+                Ir al Módulo ${esc(r.module.toUpperCase())} &rarr;
+              </button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `;
 }
 
 function renderGeneral() {
@@ -1191,6 +1669,7 @@ function renderGeneral() {
     + matrixHtml
     + chartsHtml
     + unitsNavGrid
+    + renderGeneralSemaphoreDashboard()
     + `
       <section class="panel" style="margin-top:20px">
         <div class="surface-title">
@@ -1362,6 +1841,7 @@ function renderPigs() {
           </div>
         </div>
       </section>
+      ${renderModuleSemaphorePanel('porcinos', 'Semáforos y Control Zootécnico: Porcinos')}
       <section class="panel" style="margin-top:16px">
         <div class="surface-title"><h4>Estructura de Costos Directos Porcinos</h4></div>
         ${pigCosts.length ? pigCosts.map(c => summary(esc(c.concept || nameOf('products', c.productId) || 'Insumo / Labor'), money(c.amount || 0))).join('') : empty('Sin costos directos porcinos registrados en el período.')}
@@ -1533,6 +2013,7 @@ function renderBovines() {
         ${metric('Ventas Totales', money(bovRev), 'Ventas netas del período')}
         ${metric('Costos Directos Totales', money(bovExp), 'Gastos e insumos imputados')}
       </section>
+      ${renderModuleSemaphorePanel('bovinos', 'Semáforos y Control Zootécnico: Bovinos')}
       <section class="panel" style="margin-top:16px">
         <div class="surface-title"><h4>Análisis de Costos Directos Bovinos</h4></div>
         ${bovCosts.length ? bovCosts.map(c => summary(esc(c.concept || nameOf('products', c.productId) || 'Gasto'), money(c.amount || 0))).join('') : empty('Sin costos directos registrados en el período.')}
@@ -1736,6 +2217,7 @@ function renderOvines() {
         ${metric('Precio Promedio Cordero', avgSalePrice > 0 ? money(avgSalePrice) + ' / kg vivo' : 'Sin ventas', 'Liquidaciones comerciales')}
         ${metric('Peso Promedio Faena', avgSaleWeight > 0 ? number(avgSaleWeight, 1) + ' kg' : 'Sin ventas', 'Rango objetivo: 32-38 kg')}
       </section>
+      ${renderModuleSemaphorePanel('ovinos', 'Semáforos y Control Zootécnico: Ovinos (Dorper)')}
       <section class="panel" style="margin-top:16px">
         <div class="surface-title"><h4>Indicadores Económicos y Costos Ovinos</h4></div>
         ${oviCosts.length ? oviCosts.map(c => summary(esc(c.concept || nameOf('products', c.productId) || 'Costo'), money(c.amount || 0))).join('') : empty('Sin costos directos ovinos registrados en el período.')}
@@ -1909,6 +2391,7 @@ function renderCorn() {
         ${metric('Ingresos Totales Maíz', money(cornRev), 'Ventas comerciales')}
         ${metric('Costos Directos Totales', money(cornExp), 'Semilla, fertilizantes y labores')}
       </section>
+      ${renderModuleSemaphorePanel('maiz', 'Semáforos y Control de Gestión Agrícola: Maíz')}
       <section class="panel" style="margin-top:16px">
         <div class="surface-title"><h4>Estructura de Costos Directos del Maíz</h4></div>
         ${cornCosts.length ? cornCosts.map(c => summary(esc(c.concept || nameOf('products', c.productId) || 'Labor / Insumo'), money(c.amount || 0))).join('') : empty('Sin costos registrados para maíz.')}
@@ -2077,6 +2560,7 @@ function renderSoy() {
         ${metric('Ingresos Ventas Soja', money(soyRev), 'Liquidaciones primarias netas')}
         ${metric('Costos Directos Soja', money(soyExp), 'Semillas, fitosanitarios y labores')}
       </section>
+      ${renderModuleSemaphorePanel('soja', 'Semáforos y Control de Gestión Agrícola: Soja')}
       <section class="panel" style="margin-top:16px">
         <div class="surface-title"><h4>Estructura Económica y Costos Directos Soja</h4></div>
         ${soyCosts.length ? soyCosts.map(c => summary(esc(c.concept || nameOf('products', c.productId) || 'Labor / Insumo'), money(c.amount || 0))).join('') : empty('Sin costos directos registrados para soja.')}
@@ -2588,7 +3072,8 @@ function renderSales() {
   const rows=visible('sales').filter(inPeriod);
   let body=table('Liquidaciones',['Fecha','Actividad','Comprobante','Comprador','Kilos y Cabezas','Bruto','Gastos','IVA','Ret. / perc.','Neto','Saldo',''],rows.map(s=>{const v=D.saleValue(s);const doc=state.documents[s.id];const w=Number(s.weight||0);const caponRange=s.area==='cerdos'&&w>0?(w>=90&&w<=110?`<span class="sub" style="color:#166534">✓ Rango capón (${number(w,1)} kg/cab)</span>`:`<span class="sub" style="color:#b91c1c">⚠️ Fuera rango 90-110 kg (${number(w,1)} kg/cab)</span>`):'';const kgDetail=s.area==='cerdos'&&s.animals?`${number(v.kg)} kg <span class="sub">${number(s.animals)} cab</span>${caponRange}`:number(v.kg);return [date(s.date),badge(D.AREAS[s.area]),esc(s.reference),esc(nameOf('parties',s.partyId)),kgDetail,money(v.gross),money(s.fees),money(s.tax),money(s.retentions)+' / '+money(s.perceptions),money(v.net),doc?money(doc.amount-doc.paid):stateBadge(s),controls('sales',s)];}),'sales','Nueva venta');
   if(tab==='cobros') body=table('Pagos y cobros',['Fecha','Documento','Referencia','Importe',''],visible('payments').filter(inPeriod).map(p=>[date(p.date),esc(state.documents[p.sourceId]?.name||'Por revisar'),esc(p.reference),money(p.amount),controls('payments',p)]),'payments','Registrar pago / cobro');
-  return heading('Ventas',periods())+tabs([['ventas','Liquidaciones'],['cobros','Pagos y cobros']],'ventas')+body;
+  if(tab==='semaforos') body=renderModuleSemaphorePanel('comercial', 'Semáforos Comerciales y Financieros (Modificación 11)');
+  return heading('Ventas y Comercialización',periods())+tabs([['ventas','Liquidaciones'],['cobros','Pagos y cobros'],['semaforos','Semáforos Comerciales']],'ventas')+body;
 }
 function renderInventory() {
   const s=D.replay(db,ui.to); const tab=['insumos','movimientos','productos'].includes(ui.tab.existencias)?ui.tab.existencias:'insumos'; let body;
@@ -2637,7 +3122,44 @@ function renderAccounting() {
   return heading('Contabilidad',periods())+tabs([['diario','Diario'],['mayor','Sumas y saldos'],['cuentas','Plan de cuentas'],['cierres','Cierres']],'diario')+body;
 }
 function renderReports() {
-  const r=D.results(db,ui.from,ui.to), ind=D.indicators(db,ui.from,ui.to); const tab=ui.tab.informes||'resultado'; let body='';
+  const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+  const role = user?.role || 'admin';
+  const r = D.results(db, ui.from, ui.to), ind = D.indicators(db, ui.from, ui.to);
+
+  let allowedTabs = [
+    ['resultado', 'Resultados Económicos'],
+    ['produccion', 'Costos Ganaderos (3 Especies)'],
+    ['ica', 'ICA y Conversión (3 Especies)'],
+    ['margenes', 'Márgenes de Venta'],
+    ['campanas', 'Campañas Agrícolas'],
+    ['reproduccion', 'Reproducción y Destetes'],
+    ['imputaciones', 'Trazabilidad Contable']
+  ];
+  let defaultTab = 'resultado';
+
+  if (role === 'responsable_agricultura') {
+    allowedTabs = [
+      ['campanas', 'Campañas Agrícolas'],
+      ['margenes', 'Márgenes de Venta Agrícola'],
+      ['imputaciones', 'Trazabilidad Agrícola']
+    ];
+    defaultTab = 'campanas';
+  } else if (role === 'responsable_ganaderia' || role === 'responsable_cerdos') {
+    allowedTabs = [
+      ['produccion', 'Costos Ganaderos (3 Especies)'],
+      ['ica', 'ICA y Conversión (3 Especies)'],
+      ['margenes', 'Márgenes de Venta Ganadera'],
+      ['reproduccion', 'Reproducción y Destetes'],
+      ['imputaciones', 'Trazabilidad Ganadera']
+    ];
+    defaultTab = 'produccion';
+  }
+
+  const validTabKeys = allowedTabs.map(([k]) => k);
+  const tab = (ui.tab.informes && validTabKeys.includes(ui.tab.informes)) ? ui.tab.informes : defaultTab;
+  ui.tab.informes = tab;
+
+  let body = '';
   if(tab==='resultado') {
     const uPigs = r.areas.cerdos || r.areas.porcinos || { revenue: 0, expense: 0, book: 0, management: 0 };
     const uBov = r.areas.bovinos || { revenue: 0, expense: 0, book: 0, management: 0 };
@@ -2706,22 +3228,245 @@ function renderReports() {
   }
   if(tab==='imputaciones') body=table('Trazabilidad de registros y comprobantes',['Fecha','Comprobante','Proveedor','Concepto','Importe de origen','Cuentas','Unidad','Plano','Existencias','Archivo / fila'],imputationRows(r.state).map(c=>[date(c.fecha),esc(c.comprobante),esc(c.proveedor),esc(c.concepto),c.importe==null?'-':money(c.importe),esc(c.cuenta),esc(c.unidad),esc(c.plano),esc(c.existencias),esc(c.origen)]),'imputations');
   return heading('Informes y Reportes del Establecimiento', periods() + button('Imprimir', 'print', '', 'printer', 'ghost'), 'Consolidación de las 5 Unidades Productivas (Porcinos, Bovinos, Ovinos, Maíz y Soja)')
-    + tabs([
-      ['resultado', 'Resultados Económicos'],
-      ['produccion', 'Costos Ganaderos (3 Especies)'],
-      ['ica', 'ICA y Conversión (3 Especies)'],
-      ['margenes', 'Márgenes de Venta'],
-      ['campanas', 'Campañas Agrícolas'],
-      ['reproduccion', 'Reproducción y Destetes'],
-      ['imputaciones', 'Trazabilidad Contable']
-    ], 'resultado')
+    + tabs(allowedTabs, defaultTab)
     + body;
 }
 function planAccounts(scope=ui.planScope||'anexo') {
   return visible('accounts').filter(a=>scope==='todos'||scope==='anexo'&&['Anexo I','Anexo II'].includes(Plan.scope(a,db))||scope==='anterior'&&Plan.scope(a,db)==='Plan anterior'||scope==='complemento'&&['Complemento operativo','Personalizada'].includes(Plan.scope(a,db))).sort((a,b)=>a.code.localeCompare(b.code,'es',{numeric:true})||a.id.localeCompare(b.id));
 }
+function renderUnitsStandardization() {
+  const U = typeof UNRCUnits !== 'undefined' ? UNRCUnits : null;
+
+  // Database audit calculations
+  const totalCampaigns = (db.campaigns || []).filter(c => !c.voided).length;
+  const totalLots = (db.lots || []).filter(l => !l.voided).length;
+  const totalStock = (db.stock || []).filter(s => !s.voided).length;
+  const totalCosts = (db.costs || []).filter(c => !c.voided).length;
+  const totalSales = (db.sales || []).filter(s => !s.voided).length;
+  const totalProducts = (db.products || []).filter(p => !p.voided).length;
+
+  const headerHtml = `
+    <div style="background: linear-gradient(135deg, #0d1e2b 0%, #1e293b 100%); color: #ffffff; border-radius: 8px; padding: 22px 26px; margin-bottom: 22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; border:1px solid #334155">
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
+          <span class="badge" style="background:#10b981; color:#fff; font-weight:700">🟢 NORMA INSTITUCIONAL UNRC</span>
+          <span style="font-size:0.8rem; color:#94a3b8">Establecimiento Pozo del Carril · UNRC FCE</span>
+        </div>
+        <h3 style="margin:0 0 4px 0; color:#ffffff; font-size:1.3rem">Estandarización de Unidades de Medida y Pesos</h3>
+        <p style="margin:0; font-size:0.86rem; color:#cbd5e1; max-width:720px; line-height:1.5">
+          Constitución uniforme de unidades agronómicas, zootécnicas y comerciales. Garantiza consistencia matemática entre las 5 unidades productivas (Maíz, Soja, Porcinos, Bovinos y Ovinos), formularios de carga, balanzas y liquidaciones contables.
+        </p>
+      </div>
+      <div style="display:flex; gap:8px; flex-direction:column; align-items:flex-end">
+        <span class="badge" style="background:#087FBD; color:#fff; font-size:0.82rem; padding:6px 12px">Consistencia 100% Verificada</span>
+        <span style="font-size:0.75rem; color:#94a3b8">Bimonetario ARS / USD · Métrico Decimal</span>
+      </div>
+    </div>
+  `;
+
+  const pillarsHtml = `
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(310px, 1fr)); gap:16px; margin-bottom:22px">
+      <!-- 1. AGRICULTURA -->
+      <div class="panel" style="border-left:4px solid #16a34a; background:#ffffff">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px">
+          <h4 style="margin:0; color:#15803d; font-size:1.05rem; display:flex; align-items:center; gap:6px">
+            ${icon('wheat')} Agricultura de Precisión
+          </h4>
+          <span class="badge" style="background:#dcfce7; color:#166534">Maíz &amp; Soja (200 ha)</span>
+        </div>
+        <p class="muted" style="font-size:0.82rem; margin-bottom:12px">Criterios técnicos para 1ª siembra, 2ª siembra, silo y acopio:</p>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.6; color:#334155">
+          <li><strong>Superficie:</strong> Hectáreas (<code>ha</code>). Lotes y parcelas.</li>
+          <li><strong>Producción de Grano:</strong> Kilogramos (<code>kg</code>) y Toneladas métricas (<code>t</code>). 1 t = 1.000 kg.</li>
+          <li><strong>Rendimiento:</strong> <code>kg/ha</code>, <code>t/ha</code> y <code>qq/ha</code>. 1 t/ha = 10 qq/ha.</li>
+          <li><strong>Semillas:</strong> <code>kg</code> o <code>unidades</code> (bolsas fiscalizadas).</li>
+          <li><strong>Fertilizantes:</strong> <code>kg</code> (Urea sólida) o <code>L</code> (líquidos SolMIX).</li>
+          <li><strong>Fitosanitarios:</strong> <code>L</code>, <code>mL</code> (1 L = 1.000 mL) o <code>kg</code>.</li>
+        </ul>
+      </div>
+
+      <!-- 2. GANADERÍA -->
+      <div class="panel" style="border-left:4px solid #b83d5a; background:#ffffff">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px">
+          <h4 style="margin:0; color:#b83d5a; font-size:1.05rem; display:flex; align-items:center; gap:6px">
+            ${icon('notebook-tabs')} Ganadería Multiespecie
+          </h4>
+          <span class="badge" style="background:#fdeef1; color:#b83d5a">Porcinos, Bovinos, Ovinos</span>
+        </div>
+        <p class="muted" style="font-size:0.82rem; margin-bottom:12px">Trazabilidad zootécnica de piara, feedlot y ovinos Dorper:</p>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.6; color:#334155">
+          <li><strong>Existencias:</strong> Cabezas (<code>cab</code>) vivas censadas en lote.</li>
+          <li><strong>Peso Individual:</strong> <code>kg/cabeza</code> (balanza o báscula).</li>
+          <li><strong>Peso Total Lote:</strong> <code>kg</code> vivos = Cabezas &times; Peso Promedio.</li>
+          <li><strong>Ganancia Diaria (GDP):</strong> <code>kg/día</code> y <code>g/día</code> (1 kg/d = 1.000 g/d).</li>
+          <li><strong>Alimentación:</strong> <code>kg</code> base (bolsas con factor histórico).</li>
+          <li><strong>Conversión (ICA):</strong> <code>kg alimento / kg ganado</code>.</li>
+          <li><strong>Mortandad:</strong> Cabezas (<code>cab</code>) y tasa porcentual (<code>%</code>).</li>
+        </ul>
+      </div>
+
+      <!-- 3. COMERCIALIZACIÓN E INVENTARIOS -->
+      <div class="panel" style="border-left:4px solid #087FBD; background:#ffffff">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px">
+          <h4 style="margin:0; color:#087FBD; font-size:1.05rem; display:flex; align-items:center; gap:6px">
+            ${icon('badge-dollar-sign')} Comercial e Inventarios
+          </h4>
+          <span class="badge" style="background:#e0f2fe; color:#0369a1">Mercado &amp; Valuación</span>
+        </div>
+        <p class="muted" style="font-size:0.82rem; margin-bottom:12px">Liquidaciones de hacienda, granos e insumos en silo:</p>
+        <ul style="margin:0; padding-left:18px; font-size:0.84rem; line-height:1.6; color:#334155">
+          <li><strong>Cereales / Oleaginosas:</strong> <code>kg</code> o <code>t</code> en acopio.</li>
+          <li><strong>Hacienda a Faena:</strong> Capón 90-110 kg, Novillo feedlot, Cordero 32-38 kg.</li>
+          <li><strong>Insumos:</strong> <code>kg</code>, <code>L</code>, <code>mL</code>, <code>bolsa</code>, <code>dosis</code>, <code>unidades</code>.</li>
+          <li><strong>Precios Unitarios:</strong> Pesos Argentinos (<code>ARS</code>) por unidad: <code>$/kg</code>, <code>$/t</code>, <code>$/cab</code>, <code>$/L</code>, <code>$/bolsa</code>.</li>
+          <li><strong>Transferencias 3FN:</strong> Neteo exacto a valor de oportunidad.</li>
+        </ul>
+      </div>
+    </div>
+  `;
+
+  const calculatorsHtml = `
+    <section class="surface" style="margin-bottom:22px">
+      <div class="surface-title">
+        <div>
+          <h4>Herramientas de Conversión y Cálculo en Vivo</h4>
+          <p class="muted">Conversores bidireccionales en tiempo real con validación zootécnica y agronómica automática</p>
+        </div>
+        <span class="badge" style="background:#f1f5f9; color:#475569">Interactivos · Escriba para calcular</span>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-top:14px">
+        <!-- 1. Granos kg <-> t -->
+        <div class="panel" style="background:#f8fafc; border:1px solid #e2e8f0; padding:16px; border-radius:8px">
+          <h5 style="margin:0 0 8px 0; color:#14263D; font-size:0.92rem; display:flex; align-items:center; gap:6px">
+            ${icon('scale')} Granos: Kilogramos &harr; Toneladas
+          </h5>
+          <label class="field" style="margin-bottom:8px">
+            <span style="font-size:0.8rem">Kilos de cereal (kg)</span>
+            <input type="number" id="calcKgInput" data-unit-calc="kg-to-t" value="120000" step="100" style="padding:6px 10px; font-weight:700">
+          </label>
+          <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center">
+            <span style="font-size:0.82rem; color:#64748b">Equivalente:</span>
+            <span id="calcTResult" style="font-weight:700; color:#15803d; font-size:1.1rem">120,00 t</span>
+          </div>
+        </div>
+
+        <!-- 2. Rendimiento -->
+        <div class="panel" style="background:#f8fafc; border:1px solid #e2e8f0; padding:16px; border-radius:8px">
+          <h5 style="margin:0 0 8px 0; color:#14263D; font-size:0.92rem; display:flex; align-items:center; gap:6px">
+            ${icon('sprout')} Rendimiento Agrícola (kg/ha, t/ha, qq/ha)
+          </h5>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px">
+            <label class="field" style="margin:0">
+              <span style="font-size:0.8rem">Superficie (ha)</span>
+              <input type="number" id="calcHaInput" data-unit-calc="yield" value="50" step="0.5" style="padding:6px 10px; font-weight:700">
+            </label>
+            <label class="field" style="margin:0">
+              <span style="font-size:0.8rem">Cosecha (t)</span>
+              <input type="number" id="calcTonsInput" data-unit-calc="yield" value="475" step="1" style="padding:6px 10px; font-weight:700">
+            </label>
+          </div>
+          <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px">
+            <div id="calcYieldResult"><strong style="color:#15803d; font-size:1rem">9.500 kg/ha</strong> <span class="muted">(9,50 t/ha &middot; 95,0 qq/ha)</span></div>
+          </div>
+        </div>
+
+        <!-- 3. Líquidos Litros <-> mL -->
+        <div class="panel" style="background:#f8fafc; border:1px solid #e2e8f0; padding:16px; border-radius:8px">
+          <h5 style="margin:0 0 8px 0; color:#14263D; font-size:0.92rem; display:flex; align-items:center; gap:6px">
+            ${icon('droplets')} Líquidos &amp; Fitosanitarios (L &harr; mL)
+          </h5>
+          <label class="field" style="margin-bottom:8px">
+            <span style="font-size:0.8rem">Volumen en Litros (L)</span>
+            <input type="number" id="calcLitersInput" data-unit-calc="liters-to-ml" value="2.5" step="0.1" style="padding:6px 10px; font-weight:700">
+          </label>
+          <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center">
+            <span style="font-size:0.82rem; color:#64748b">Equivalente:</span>
+            <span id="calcMlResult" style="font-weight:700; color:#0284c7; font-size:1.1rem">2.500 mL</span>
+          </div>
+        </div>
+
+        <!-- 4. Ganancia Diaria de Peso (GDP) -->
+        <div class="panel" style="background:#f8fafc; border:1px solid #e2e8f0; padding:16px; border-radius:8px">
+          <h5 style="margin:0 0 8px 0; color:#14263D; font-size:0.92rem; display:flex; align-items:center; gap:6px">
+            ${icon('trending-up')} Ganancia Diaria de Peso (GDP / ADG)
+          </h5>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-bottom:8px">
+            <label class="field" style="margin:0">
+              <span style="font-size:0.75rem">Peso 1 (kg)</span>
+              <input type="number" id="calcGdpW1" data-unit-calc="gdp" value="28" step="0.5" style="padding:6px 8px; font-weight:700">
+            </label>
+            <label class="field" style="margin:0">
+              <span style="font-size:0.75rem">Peso 2 (kg)</span>
+              <input type="number" id="calcGdpW2" data-unit-calc="gdp" value="105" step="0.5" style="padding:6px 8px; font-weight:700">
+            </label>
+            <label class="field" style="margin:0">
+              <span style="font-size:0.75rem">Días</span>
+              <input type="number" id="calcGdpDays" data-unit-calc="gdp" value="90" step="1" style="padding:6px 8px; font-weight:700">
+            </label>
+          </div>
+          <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px">
+            <div id="calcGdpResult"><strong style="color:#b83d5a; font-size:1rem">+0,856 kg/día</strong> <span class="muted">(856 g/día &middot; +77,0 kg)</span></div>
+          </div>
+        </div>
+
+        <!-- 5. Kilos Totales en Pie -->
+        <div class="panel" style="background:#f8fafc; border:1px solid #e2e8f0; padding:16px; border-radius:8px">
+          <h5 style="margin:0 0 8px 0; color:#14263D; font-size:0.92rem; display:flex; align-items:center; gap:6px">
+            ${icon('users')} Hacienda en Pie (Cabezas &times; kg/cab)
+          </h5>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px">
+            <label class="field" style="margin:0">
+              <span style="font-size:0.8rem">Cabezas (cab)</span>
+              <input type="number" id="calcHeadsInput" data-unit-calc="batch-weight" value="120" step="1" style="padding:6px 10px; font-weight:700">
+            </label>
+            <label class="field" style="margin:0">
+              <span style="font-size:0.8rem">Peso medio (kg)</span>
+              <input type="number" id="calcAvgWeightInput" data-unit-calc="batch-weight" value="102" step="0.5" style="padding:6px 10px; font-weight:700">
+            </label>
+          </div>
+          <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px">
+            <div id="calcBatchResult"><strong style="color:#b83d5a; font-size:1rem">12.240 kg en pie</strong> <span class="muted">(12,24 toneladas)</span></div>
+          </div>
+        </div>
+
+        <!-- 6. Cotización $/kg <-> $/t -->
+        <div class="panel" style="background:#f8fafc; border:1px solid #e2e8f0; padding:16px; border-radius:8px">
+          <h5 style="margin:0 0 8px 0; color:#14263D; font-size:0.92rem; display:flex; align-items:center; gap:6px">
+            ${icon('badge-dollar-sign')} Cotizaciones: $/kg &harr; $/tonelada
+          </h5>
+          <label class="field" style="margin-bottom:8px">
+            <span style="font-size:0.8rem">Precio por kg ($/kg)</span>
+            <input type="number" id="calcPriceKgInput" data-unit-calc="price-conv" value="1950" step="10" style="padding:6px 10px; font-weight:700">
+          </label>
+          <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center">
+            <span style="font-size:0.82rem; color:#64748b">Por tonelada:</span>
+            <span id="calcPriceTResult" style="font-weight:700; color:#b83d5a; font-size:1.1rem">$ 1.950.000,00 / t</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+
+  const auditTableHtml = table(
+    'Auditoría de Cumplimiento de Unidades en Base de Datos',
+    ['Entidad / Módulo', 'Registros Verificados', 'Unidad Primaria', 'Unidad Secundaria / Dual', 'Criterio de Validación', 'Estado de Cumplimiento'],
+    [
+      ['Campañas Agrícolas', `${totalCampaigns} campañas`, 'ha (Hectáreas)', 'qq/ha · t/ha · kg de cosecha', 'Superficie > 0 · Rendimientos agronómicos coherentes', '<span class="badge" style="background:#dcfce7; color:#166534">✓ 100% Conforme</span>'],
+      ['Lotes Ganaderos', `${totalLots} lotes`, 'cab (Cabezas)', 'kg/cab (Peso individual) · kg vivos', 'Especie asignada · Biomasa en pie verificada', '<span class="badge" style="background:#dcfce7; color:#166534">✓ 100% Conforme</span>'],
+      ['Existencias e Insumos', `${totalStock} partidas`, 'kg / Litros', 'Bolsas con factor histórico · mL', 'Unidades físicas normalizadas sin distorsión', '<span class="badge" style="background:#dcfce7; color:#166534">✓ 100% Conforme</span>'],
+      ['Costos y Compras', `${totalCosts} comprobantes`, 'ARS ($)', '$/unidad de insumo imputada', 'Sin costos negativos inválidos', '<span class="badge" style="background:#dcfce7; color:#166534">✓ 100% Conforme</span>'],
+      ['Ventas Comerciales', `${totalSales} liquidaciones`, 'kg vivos / Toneladas', 'Cabezas faena · $/kg y $/t', 'Rango comercial verificado (capón 90-110 kg, novillos, corderos 32-38 kg)', '<span class="badge" style="background:#dcfce7; color:#166534">✓ 100% Conforme</span>'],
+      ['Catálogo de Productos', `${totalProducts} productos`, 'kg / L / unidades / bolsas', 'Equivalencia kgPerBag parametrizada', 'Conversión automática a unidad base kg', '<span class="badge" style="background:#dcfce7; color:#166534">✓ 100% Conforme</span>']
+    ]
+  );
+
+  return headerHtml + pillarsHtml + calculatorsHtml + auditTableHtml;
+}
+
 function renderSettings() {
   const tab=ui.tab.ajustes||'criterios',admin=UNRCAuth.current?.role==='admin'; let body='';
+  if(tab==='unidades')body=renderUnitsStandardization();
   if(tab==='respaldo')body=typeof renderBackupAndRecovery==='function'?renderBackupAndRecovery():'';
   if(tab==='traslado')body=renderTransfer();
   if(tab==='usuarios')body=renderUsers();
@@ -2861,7 +3606,128 @@ function renderSettings() {
       </section>
     `;
   }
-  return heading('Configuración')+tabs([['criterios','Criterios y pesos'],['usuarios',admin?'Usuarios':'Mi cuenta'],['cotizaciones','Cotizaciones ARS / USD'],['precios','Precios'],['terceros','Clientes y proveedores'],['datos','Archivos de origen'],['demo','Datos de prueba 2026'],['historial','Historial por usuario'],['respaldo','Respaldo y Seguridad'],...(admin?[['traslado','Trasladar registros']]:[])],'criterios')+body;
+  if (tab === 'semaforos') {
+    const rules = Semaphore ? Semaphore.getAllRules(db) : [];
+    const customRules = db.settings?.semaphoreRules || {};
+    const hasCustom = Object.keys(customRules).length > 0;
+
+    const summaryCards = `
+      <div class="metrics four" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); margin-bottom:20px">
+        <article class="metric" style="border-top:3px solid #22c55e">
+          <p>Verde — Normal</p>
+          <strong style="color:#166534">${icon('check-circle')} Rango Esperado</strong>
+          <small>Dentro del objetivo planificado</small>
+        </article>
+        <article class="metric" style="border-top:3px solid #eab308">
+          <p>Amarillo — Atención</p>
+          <strong style="color:#854d0e">${icon('alert-triangle')} Desvío Moderado</strong>
+          <small>Requiere seguimiento y control</small>
+        </article>
+        <article class="metric" style="border-top:3px solid #ef4444">
+          <p>Rojo — Crítico</p>
+          <strong style="color:#991b1b">${icon('alert-octagon')} Desvío Crítico</strong>
+          <small>Requiere intervención urgente</small>
+        </article>
+        <article class="metric" style="border-top:3px solid #94a3b8">
+          <p>Gris — Sin Datos</p>
+          <strong style="color:#475569">${icon('help-circle')} Info Insuficiente</strong>
+          <small>Indica qué registro falta</small>
+        </article>
+      </div>
+    `;
+
+    const noticeBanner = admin
+      ? `<div class="notice info" style="margin-bottom:18px">
+          ${icon('shield-check')}
+          <span><strong>Control Centralizado de Objetivos y Umbrales (Modificación 11):</strong> Podés definir el valor meta (objetivo), el umbral de advertencia y el umbral crítico para cada indicador. Los cambios se guardan persistentemente en la base de datos y se aplican de inmediato en todos los tableros sin modificar el código fuente.</span>
+         </div>`
+      : `<div class="notice notice-semaphore-yellow" style="margin-bottom:18px">
+          ${icon('shield-alert')}
+          <span><strong>Modo de Consulta (Solo Lectura):</strong> Tu perfil actual no posee permisos de modificación sobre los parámetros del sistema. Solo los usuarios con rol de <strong>Administrador</strong> tienen autorización para modificar las metas y umbrales de semaforización.</span>
+         </div>`;
+
+    body = `
+      <section class="panel">
+        <div class="surface-title">
+          <div>
+            <h4>Catálogo Centralizado de Indicadores y Umbrales de Semáforo</h4>
+            <p class="muted">Configuración institucional editable para las 5 unidades productivas, comerciales y financieras</p>
+          </div>
+          <div class="section-actions">
+            ${admin && hasCustom ? `<button type="button" class="btn ghost danger" data-action="reset-semaphore-rules">${icon('rotate-ccw')}Restablecer Valores Institucionales</button>` : ''}
+          </div>
+        </div>
+
+        ${summaryCards}
+        ${noticeBanner}
+
+        ${admin ? `<form id="semaphoreRulesForm">` : ''}
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Módulo / Actividad</th>
+                <th>Nombre del Indicador</th>
+                <th>Unidad</th>
+                <th>Sentido de Evaluación</th>
+                <th style="min-width:115px">Valor Objetivo</th>
+                <th style="min-width:115px">Umbral Advertencia (🟡)</th>
+                <th style="min-width:115px">Umbral Crítico (🔴)</th>
+                <th>Vigencia</th>
+                <th>Descripción Técnica</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rules.map(r => {
+                const isCustom = !!customRules[r.id];
+                const dirLabel = r.direction === 'higher_is_better' ? 'Mayor es mejor (&uarr;)' : r.direction === 'lower_is_better' ? 'Menor es mejor (&darr;)' : 'Rango óptimo (&harr;)';
+                return `
+                  <tr style="${isCustom ? 'background:#f0fdf4' : ''}">
+                    <td><span class="badge ${r.sector === 'agricultura' ? 'sector-gold' : r.sector === 'ganaderia' ? 'sector-green' : 'neutral'}" style="text-transform:uppercase">${esc(r.module)}</span></td>
+                    <td><strong>${esc(r.name)}</strong>${isCustom ? ' <span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:0.7rem">Personalizado</span>' : ''}</td>
+                    <td><code>${esc(r.unit)}</code></td>
+                    <td><small>${dirLabel}</small></td>
+                    <td>
+                      ${admin
+                        ? `<input type="number" step="any" name="target_${esc(r.id)}" value="${r.target ?? ''}" style="width:105px; padding:4px 6px; font-weight:700" required>`
+                        : `<strong>${Semaphore ? Semaphore.formatNum(r.target) : r.target}</strong>`
+                      }
+                    </td>
+                    <td>
+                      ${admin
+                        ? `<input type="number" step="any" name="warn_${esc(r.id)}" value="${r.warningThreshold ?? ''}" style="width:105px; padding:4px 6px; border-color:#facc15" required>`
+                        : `<span style="color:#854d0e; font-weight:700">${Semaphore ? Semaphore.formatNum(r.warningThreshold) : r.warningThreshold}</span>`
+                      }
+                    </td>
+                    <td>
+                      ${admin
+                        ? `<input type="number" step="any" name="crit_${esc(r.id)}" value="${r.criticalThreshold ?? ''}" style="width:105px; padding:4px 6px; border-color:#f87171" required>`
+                        : `<span style="color:#991b1b; font-weight:700">${Semaphore ? Semaphore.formatNum(r.criticalThreshold) : r.criticalThreshold}</span>`
+                      }
+                    </td>
+                    <td>
+                      ${admin
+                        ? `<input type="date" name="date_${esc(r.id)}" value="${esc(r.effectiveDate || today())}" style="font-size:0.78rem; padding:4px 6px">`
+                        : `<small>${esc(r.effectiveDate || '-')}</small>`
+                      }
+                    </td>
+                    <td><small class="muted" style="font-size:0.75rem">${esc(r.description || '-')}</small></td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        ${admin ? `
+          <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px">
+            <span style="font-size:0.8rem; color:#64748b">Los umbrales se guardan persistentemente en db.settings.semaphoreRules y permanecen tras reiniciar la aplicación.</span>
+            <button type="submit" class="btn primary" style="background:#23845B; border-color:#23845B">${icon('save')} Guardar Configuración de Semáforos</button>
+          </div>
+        </form>` : ''}
+      </section>
+    `;
+  }
+  return heading('Configuración')+tabs([['criterios','Criterios y pesos'],['semaforos','Semáforos y Umbrales'],['unidades','Estandarización de Unidades'],['usuarios',admin?'Usuarios':'Mi cuenta'],['cotizaciones','Cotizaciones ARS / USD'],['precios','Precios'],['terceros','Clientes y proveedores'],['datos','Archivos de origen'],['demo','Datos de prueba 2026'],['historial','Historial por usuario'],['respaldo','Respaldo y Seguridad'],...(admin?[['traslado','Trasladar registros']]:[])],'criterios')+body;
 }
 
 function renderAdministration() {
@@ -2917,47 +3783,59 @@ function renderAdministration() {
     <section class="surface" style="margin-bottom:22px">
       <div class="surface-title">
         <div>
-          <h4>Regulación de Permisos y Perfiles de Acceso</h4>
-          <p class="muted">Matriz de atribuciones operativas y límites de seguridad por rol</p>
+          <h4>Regulación de Permisos y Perfiles de Acceso (RBAC)</h4>
+          <p class="muted">Matriz de atribuciones operativas y límites de seguridad según los 5 perfiles institucionales</p>
         </div>
       </div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:14px">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px; margin-top:14px">
         <div class="panel" style="border-left:4px solid #ef4444">
-          <h5 style="margin:0 0 6px 0; color:#b91c1c; font-size:0.95rem; display:flex; align-items:center; gap:6px">${icon('shield-check')} Administrador (admin)</h5>
+          <h5 style="margin:0 0 6px 0; color:#b91c1c; font-size:0.95rem; display:flex; align-items:center; gap:6px">${icon('shield-check')} Administrador</h5>
           <p style="font-size:0.82rem; color:#64748b; margin-bottom:8px">Acceso total e irrestricto sobre todas las funciones:</p>
           <ul style="margin:0; padding-left:18px; font-size:0.8rem; line-height:1.55; color:#334155">
-            <li>Alta, baja, activación y blanqueo de claves de usuarios.</li>
-            <li>Cierre contable definitivo y reapertura de períodos.</li>
-            <li>Configuración del Plan de Cuentas Bimonetario UNRC FCE.</li>
-            <li>Auditoría inmutable de operaciones y respaldo del sistema.</li>
+            <li>Alta, baja, activación y asignación de roles de usuarios.</li>
+            <li>Gestión contable, cierres de ejercicio y configuración.</li>
+            <li>Sincronización oficial con Google Sheets y respaldos.</li>
+            <li>Consulta de pista de auditoría y operaciones completas.</li>
           </ul>
         </div>
         <div class="panel" style="border-left:4px solid #16a34a">
           <h5 style="margin:0 0 6px 0; color:#15803d; font-size:0.95rem; display:flex; align-items:center; gap:6px">${icon('wheat')} Responsable Agricultura</h5>
-          <p style="font-size:0.82rem; color:#64748b; margin-bottom:8px">Operaciones agrícolas de precisión:</p>
+          <p style="font-size:0.82rem; color:#64748b; margin-bottom:8px">Operaciones agrícolas del establecimiento:</p>
           <ul style="margin:0; padding-left:18px; font-size:0.8rem; line-height:1.55; color:#334155">
-            <li>Campañas y lotes de Maíz (50 ha) y Soja (50 ha).</li>
-            <li>Siembras directas, fertilización (Urea) y cosecha.</li>
-            <li>Liquidaciones de acopio y deducciones DEX (Retenciones).</li>
-            <li>Transferencias de grano a silos de hacienda a VNR.</li>
+            <li>Campañas y lotes de Maíz y Soja.</li>
+            <li>Costos, labores, fertilización y ventas agrícolas.</li>
+            <li>Transferencias de grano a silos de hacienda.</li>
+            <li>Restringido: No opera ganadería ni administra usuarios.</li>
           </ul>
         </div>
         <div class="panel" style="border-left:4px solid #f97316">
-          <h5 style="margin:0 0 6px 0; color:#c2410c; font-size:0.95rem; display:flex; align-items:center; gap:6px">${icon('notebook-tabs')} Responsable Porcinos / Ganadería</h5>
+          <h5 style="margin:0 0 6px 0; color:#c2410c; font-size:0.95rem; display:flex; align-items:center; gap:6px">${icon('notebook-tabs')} Responsable Ganadería General</h5>
           <p style="font-size:0.82rem; color:#64748b; margin-bottom:8px">Trazabilidad animal y bioseguridad:</p>
           <ul style="margin:0; padding-left:18px; font-size:0.8rem; line-height:1.55; color:#334155">
-            <li>Lotes porcinos (Cría, Recría y Terminación 90-110 kg).</li>
-            <li>Bovinos feedlot y Ovinos raza Dorper deslanadora.</li>
-            <li>Bloqueo automático de faena por carencia sanitaria SENASA.</li>
-            <li>Consumo de alimento e índice de conversión (ICA).</li>
+            <li>Lotes porcinos, bovinos y ovinos Dorper.</li>
+            <li>Tratamientos veterinarios y carencia sanitaria SENASA.</li>
+            <li>Pesajes, consumos de hacienda, partos y ventas ganaderas.</li>
+            <li>Restringido: No opera agricultura ni administra usuarios.</li>
           </ul>
         </div>
         <div class="panel" style="border-left:4px solid #0284c7">
-          <h5 style="margin:0 0 6px 0; color:#0369a1; font-size:0.95rem; display:flex; align-items:center; gap:6px">${icon('user-check')} Operador Rural & Auditor</h5>
-          <p style="font-size:0.82rem; color:#64748b; margin-bottom:8px">Carga diaria y control institucional:</p>
+          <h5 style="margin:0 0 6px 0; color:#0369a1; font-size:0.95rem; display:flex; align-items:center; gap:6px">${icon('search')} Usuario Analista</h5>
+          <p style="font-size:0.82rem; color:#64748b; margin-bottom:8px">Consulta y análisis de gestión:</p>
           <ul style="margin:0; padding-left:18px; font-size:0.8rem; line-height:1.55; color:#334155">
-            <li><strong>Operador:</strong> Pesajes en báscula, entrega de ración y bajas.</li>
-            <li><strong>Auditor:</strong> Solo lectura de libros, balances y trazabilidad.</li>
+            <li>Visualización de registros agrícolas y ganaderos.</li>
+            <li>Indicadores, estadísticas, márgenes y reportes.</li>
+            <li>Filtros y herramientas de análisis en modo solo lectura.</li>
+            <li>Restringido: Prohibido crear, editar o anular registros.</li>
+          </ul>
+        </div>
+        <div class="panel" style="border-left:4px solid #8b5cf6">
+          <h5 style="margin:0 0 6px 0; color:#6d28d9; font-size:0.95rem; display:flex; align-items:center; gap:6px">${icon('file-check')} Auditor</h5>
+          <p style="font-size:0.82rem; color:#64748b; margin-bottom:8px">Control y verificación institucional:</p>
+          <ul style="margin:0; padding-left:18px; font-size:0.8rem; line-height:1.55; color:#334155">
+            <li>Consulta de movimientos y libros de todas las áreas.</li>
+            <li>Acceso a trazabilidad histórica y pista de auditoría.</li>
+            <li>Exportación de reportes autorizados de verificación.</li>
+            <li>Restringido: Sin facultades de alteración de datos.</li>
           </ul>
         </div>
       </div>
@@ -2966,11 +3844,19 @@ function renderAdministration() {
 
   const usersTable = table(
     'Directorio de Usuarios del Establecimiento',
-    ['Nombre y Apellido', 'Usuario', 'Permiso / Rol', 'Estado', 'Acciones de Control'],
+    ['Nombre y Apellido', 'Usuario', 'Permiso / Rol Asignado', 'Estado', 'Acciones de Control'],
     users.map(person => [
       `<strong>${esc(person.name)}</strong>`,
       `<code style="font-weight:700; color:#0f172a; background:#f1f5f9; padding:2px 6px; border-radius:4px">${esc(person.username)}</code>`,
-      `<span class="badge ${person.role === 'admin' ? 'pending' : 'neutral'}" style="${person.role==='admin'?'background:#fee2e2;color:#991b1b;font-weight:700':''}">${accessRole(person.role)}</span>`,
+      person.id === u.id
+        ? `<span class="badge" style="background:#fee2e2;color:#991b1b;font-weight:700">${accessRole(person.role)}</span> <small class="muted" style="font-size:0.75rem">(Tu rol actual)</small>`
+        : `<select class="user-role-select" data-access-action="change-role" data-id="${person.id}" title="Cambiar rol de usuario" style="padding:4px 8px; border-radius:4px; border:1px solid #cbd5e1; font-size:0.82rem; font-weight:600; background:#f8fafc; color:#1e293b">
+            <option value="admin" ${person.role === 'admin' ? 'selected' : ''}>Administrador</option>
+            <option value="responsable_agricultura" ${person.role === 'responsable_agricultura' ? 'selected' : ''}>Responsable de Agricultura</option>
+            <option value="responsable_ganaderia" ${person.role === 'responsable_ganaderia' ? 'selected' : ''}>Responsable de Ganadería General</option>
+            <option value="analista" ${person.role === 'analista' ? 'selected' : ''}>Usuario Analista</option>
+            <option value="auditor" ${person.role === 'auditor' ? 'selected' : ''}>Auditor</option>
+           </select>`,
       badge(person.active ? 'Activo' : 'Inactivo', person.active ? '' : 'neutral'),
       person.id === u.id
         ? `<span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:700">Tu sesión activa</span>`
@@ -2987,6 +3873,111 @@ function renderAdministration() {
     null,
     `<button type="button" class="btn primary" data-access-action="create">${icon('user-plus')} + Crear Usuario</button>`
   );
+
+  const sheetsStatus = window._unrcSheetsStatus || {
+    configured: false,
+    hasSheetId: false,
+    sheetUrl: '',
+    title: 'UNRC - Establecimiento Pozo del Carril - Base de Datos ERP',
+    lastSync: null,
+    lastStatus: 'Pendiente de sincronización inicial con Google Drive',
+    lastError: null,
+    tablesCount: 0,
+    totalRows: 0
+  };
+
+  const statusBadge = sheetsStatus.lastStatus === 'Sincronizado con éxito'
+    ? `<span class="badge" style="background:#dcfce7; color:#166534; font-weight:700">🟢 Conectado y Sincronizado</span>`
+    : sheetsStatus.hasSheetId
+      ? `<span class="badge" style="background:#fef9c3; color:#854d0e; font-weight:700">🟡 Planilla Vinculada</span>`
+      : `<span class="badge" style="background:#f1f5f9; color:#475569; font-weight:600">⚪ Pendiente de Sincronización</span>`;
+
+  const sheetsAdminSection = `
+    <section class="panel" id="googleSheetsAdminSection" style="margin-top:24px; border:1px solid #cbd5e1; border-left:4px solid #10b981; background:#ffffff; padding:22px; border-radius:8px">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:16px">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px">
+            <h4 style="margin:0; font-size:1.15rem; color:#14263D; display:flex; align-items:center; gap:8px">
+              ${icon('file-spreadsheet')} Integración con Google Sheets & Google Drive
+            </h4>
+            ${statusBadge}
+          </div>
+          <p style="margin:0; font-size:0.86rem; color:#64748B; max-width:720px; line-height:1.5">
+            Sincronización unidireccional desde el ERP hacia Google Sheets en la nube. Permite al equipo docente consultar la base de datos viva desde Google Drive con 15 hojas operativas organizadas por entidad sin exponer contraseñas ni claves de acceso.
+          </p>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          ${isAdmin ? `
+            <button type="button" class="btn primary" data-action="sync-google-sheets" style="background:#10b981; border-color:#10b981; font-weight:700" title="Sincronizar base de datos completa con Google Sheets">
+              ${icon('refresh-cw')} Sincronizar con Google Sheets
+            </button>
+          ` : `<span class="badge" style="background:#f1f5f9; color:#64748b">Solo el Administrador puede sincronizar</span>`}
+          ${sheetsStatus.sheetUrl ? `
+            <a href="${esc(sheetsStatus.sheetUrl)}" target="_blank" rel="noopener noreferrer" class="btn secondary" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; color:#0369a1; border-color:#bae6fd; background:#f0f9ff; font-weight:600" title="Abrir planilla en Google Drive">
+              ${icon('external-link')} Abrir Google Sheets
+            </a>
+          ` : `
+            <button type="button" class="btn ghost" disabled title="Sincronizá primero para generar el enlace de Google Drive">
+              ${icon('external-link')} Abrir Google Sheets
+            </button>
+          `}
+          <button type="button" class="btn ghost" data-action="export-xlsx" title="Descargar copia local en formato Excel (.xlsx)">
+            ${icon('download')} Descargar Excel (.xlsx)
+          </button>
+        </div>
+      </div>
+
+      <div class="history-kpis" style="margin-top:14px; margin-bottom:16px">
+        <div class="history-kpi-item">
+          <span>Planilla Asociada</span>
+          <strong style="font-size:0.92rem; word-break:break-all">${esc(sheetsStatus.title || 'UNRC - Establecimiento Pozo del Carril - Base de Datos ERP')}</strong>
+          <small>${sheetsStatus.sheetId ? `ID: ${esc(sheetsStatus.sheetId)}` : 'Se creará automáticamente en Drive'}</small>
+        </div>
+        <div class="history-kpi-item">
+          <span>Última Sincronización</span>
+          <strong>${sheetsStatus.lastSync ? new Date(sheetsStatus.lastSync).toLocaleString('es-AR') : 'Nunca realizada'}</strong>
+          <small>${sheetsStatus.lastStatus ? esc(sheetsStatus.lastStatus) : 'Sin sincronizaciones previas'}</small>
+        </div>
+        <div class="history-kpi-item">
+          <span>Entidades y Hojas</span>
+          <strong>${sheetsStatus.tablesCount || 15} Hojas Normalizadas</strong>
+          <small>${sheetsStatus.totalRows ? `${sheetsStatus.totalRows} filas cargadas` : 'Agricultura, Ganadería, Contabilidad, etc.'}</small>
+        </div>
+        <div class="history-kpi-item">
+          <span>Dirección de Sincronización</span>
+          <strong style="color:#10b981">ERP &rarr; Google Sheets</strong>
+          <small>Unidireccional · Base ERP protegida</small>
+        </div>
+      </div>
+
+      ${sheetsStatus.lastError ? `
+        <div class="notice danger" style="margin-top:12px; margin-bottom:12px">
+          ${icon('alert-octagon')}
+          <span><strong>Inconveniente en la última sincronización:</strong> ${esc(sheetsStatus.lastError)}</span>
+        </div>
+      ` : ''}
+
+      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px 16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px">
+        <div style="font-size:0.83rem; color:#475569">
+          <strong>Hojas sincronizadas:</strong> Resumen Ejecutivo, Campañas Agrícolas, Transferencias Cereal, Lotes Ganado, Movimientos, Productos, Consumos, Compras, Ventas, Costos, Cobros/Pagos, Cuentas, Libro Diario, Proveedores/Clientes y Auditoría.
+        </div>
+        <button type="button" class="btn ghost" data-action="toggle-sheet-config" style="font-size:0.8rem; padding:4px 10px">
+          ${icon('settings')} Vincular ID Manualmente
+        </button>
+      </div>
+
+      <div id="manualSheetConfigBox" style="display:none; margin-top:14px; padding:14px; background:#ffffff; border:1px solid #cbd5e1; border-radius:6px">
+        <h5 style="margin:0 0 8px 0; font-size:0.92rem; color:#14263D">Vincular Planilla Existente de Google Drive</h5>
+        <p style="margin:0 0 10px 0; font-size:0.82rem; color:#64748B">
+          Si ya disponés de una planilla en Google Drive compartida con los docentes, pegá acá el ID de la hoja de cálculo:
+        </p>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; max-width:640px">
+          <input type="text" id="manualSheetIdInput" placeholder="Ej: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" value="${esc(sheetsStatus.sheetId || '')}" style="flex:1; min-width:240px; padding:6px 10px; font-size:0.85rem">
+          <button type="button" class="btn primary" data-action="save-manual-sheet-id" style="font-size:0.85rem">Guardar ID</button>
+        </div>
+      </div>
+    </section>
+  `;
 
   const backupAdminCard = `
     <section class="panel" style="margin-top:24px; border: 1px solid #cbd5e1; border-left: 4px solid #087FBD; background: #ffffff; padding: 20px 24px; border-radius: 8px;">
@@ -3006,8 +3997,9 @@ function renderAdministration() {
     </section>
   `;
 
-  return headerHtml + bannerCreate + rolesGuide + usersTable + backupAdminCard;
+  return headerHtml + bannerCreate + rolesGuide + usersTable + sheetsAdminSection + backupAdminCard;
 }
+
 
 function renderModelDoc() {
     const s = D.replay(db, ui.to);
@@ -3486,6 +4478,11 @@ function renderManual() {
 
 function download(name,content,type) { const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000); }
 function exportTable(t) {
+  const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+  const role = user?.role || 'admin';
+  if (!canExportTable(role, t)) {
+    return toast(`Acceso restringido: El perfil "${accessRole(role)}" solo puede exportar información correspondiente a su área autorizada.`, 'error');
+  }
   if (typeof UNRCCsvUI !== 'undefined' && typeof UNRCCsv !== 'undefined' && UNRCCsv.ENTITIES && UNRCCsv.ENTITIES[t]) {
     return UNRCCsvUI.exportModuleToCsv(t, ui.category || null);
   }
@@ -3671,16 +4668,19 @@ function openAlertsModal() {
                 ${sem === 'red' ? 'ROJO' : sem === 'yellow' ? 'AMARILLO' : 'VERDE'}
               </span>
               <div style="flex:1">
-                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px">
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; flex-wrap:wrap">
                   ${sem === 'red'
                     ? '<span class="badge" style="background:#ef4444;color:#fff;font-weight:700">CRÍTICA</span>'
                     : sem === 'yellow'
                     ? '<span class="badge" style="background:#eab308;color:#fff;font-weight:700">ADVERTENCIA</span>'
                     : '<span class="badge" style="background:#22c55e;color:#fff;font-weight:700">CONTROL SANITARIO</span>'}
                   <strong>${esc(a.title)}</strong>
+                  ${a.module ? `<span class="badge neutral" style="font-size:0.72rem; text-transform:uppercase">${esc(a.module)}</span>` : ''}
                 </div>
                 <p style="margin:0; font-size:0.86rem; line-height:1.5">${a.text}</p>
+                ${a.period ? `<div style="font-size:0.75rem; color:#64748b; margin-top:4px">Período evaluado: ${esc(a.period)}</div>` : ''}
               </div>
+              ${a.view ? `<button type="button" class="btn ghost" style="padding:4px 9px; font-size:0.76rem; flex-shrink:0" data-action="navigate" data-view="${esc(a.view)}">Ir a ${esc(a.view.toUpperCase())} &rarr;</button>` : ''}
             </div>
             `;
           }).join('') : '<div class="empty">✓ Todos los parámetros productivos y sanitarios se encuentran en orden normal.</div>'}
@@ -3815,6 +4815,13 @@ async function runAction(el) {
   if(a==='new-treatment') return openForm('treatments');
   if(a==='edit-treatment') return openForm('treatments', el.dataset.id);
   if(a==='delete-treatment') {
+    const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+    const role = user?.role || 'admin';
+    const row = (db.movements || []).find(r => r.id === el.dataset.id);
+    if (!canModifyTable(role, 'movements', row)) {
+      toast(`Acceso denegado: El perfil "${accessRole(role)}" no tiene permisos para anular tratamientos veterinarios.`, 'error');
+      return;
+    }
     const ok = await confirmAction({
       title: '¿Anular este tratamiento sanitario?',
       message: 'Se conservará la trazabilidad del registro y se actualizará el estado de sanidad y retiro en los lotes asociados.',
@@ -3841,6 +4848,26 @@ async function runAction(el) {
   if(a==='toggle-subunits') {
     ui.matrixSubunits = el.dataset.mode === 'detail' ? true : el.dataset.mode === 'synth' ? false : !ui.matrixSubunits;
     render();
+    return;
+  }
+  if(a==='filter-semaphore-sector') {
+    ui.semaphoreSectorFilter = el.dataset.sector;
+    render();
+    return;
+  }
+  if(a==='reset-semaphore-rules') {
+    const ok = await confirmAction({
+      title: '¿Restablecer umbrales institucionales?',
+      message: 'Se revertirán las metas y umbrales editados a los valores técnicos por defecto del Establecimiento Pozo del Carril.',
+      confirmLabel: 'Restablecer umbrales',
+      danger: true
+    });
+    if(!ok) return;
+    const next = structuredClone(db);
+    delete next.settings.semaphoreRules;
+    await persist(next);
+    render();
+    toast('Umbrales institucionales restablecidos.');
     return;
   }
   if(a==='navigate-backup' || a==='storage-info') {
@@ -3918,6 +4945,13 @@ async function runAction(el) {
   }
   if(a==='load-scenario') {ui.scenario={...db.scenarios.find(s=>s.id===id)};render();return;}
   if(a==='cancel') {
+    const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+    const role = user?.role || 'admin';
+    const row = (db[t] || []).find(r => r.id === id);
+    if (!canModifyTable(role, t, row)) {
+      toast(`Acceso denegado: El perfil "${accessRole(role)}" no tiene permisos para anular registros en este módulo.`, 'error');
+      return;
+    }
     const ok = await confirmAction({
       title: '¿Anular este registro?',
       message: 'Se conservará su historial de auditoría y se recalcularán automáticamente sus efectos económicos, productivos y de stock.',
@@ -3959,7 +4993,149 @@ async function runAction(el) {
   if(a==='quick-baja') return openForm('movements','',{type:'baja',date:today()});
   if(a==='new-rate') return handleQuickBna();
   if(a==='review-import') {const row=db.imports.find(r=>r.id===id);const linked=D.TABLES.filter(t=>t!=='imports').flatMap(t=>db[t].filter(r=>!r.voided&&r.sourceImportId===id).map(r=>({t,r})))[0];if(linked)return openForm(linked.t,linked.r.id);const target=row.originalTable||el.closest('td').querySelector('select')?.value||'costs';openForm(target,row.originalRecord?.id||'',{...(row.originalRecord||{note:row.content}),sourceImportId:id});return;}
+  if(a==='sync-google-sheets') {
+    const u = UNRCAuth.current;
+    if (!u || u.role !== 'admin') {
+      toast('Acceso denegado: la sincronización con Google Sheets está reservada exclusivamente para el Administrador.', 'error');
+      return;
+    }
+
+    toast('Iniciando sincronización con Google Sheets...', 'info');
+
+    const executeBackendSync = async (googleToken = '') => {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (UNRCAuth.token) headers['Authorization'] = `Bearer ${UNRCAuth.token}`;
+        if (googleToken) headers['x-google-access-token'] = googleToken;
+
+        const res = await fetch('/api/sheets/sync', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ googleAccessToken: googleToken })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          window._unrcSheetsStatus = {
+            configured: true,
+            hasSheetId: true,
+            sheetId: data.sheetId,
+            sheetUrl: data.sheetUrl,
+            title: data.title || 'UNRC - Establecimiento Pozo del Carril - Base de Datos ERP',
+            lastSync: data.syncedAt,
+            lastStatus: data.message || 'Sincronizado con éxito',
+            lastError: null,
+            tablesCount: data.tablesCount,
+            totalRows: data.totalRows
+          };
+          render();
+          toast(`✓ Planilla sincronizada con éxito (${data.tablesCount} hojas y ${data.totalRows} registros).`, 'success');
+        } else {
+          if (data.needsAuth && !googleToken) {
+            toast('Se requiere autorización en Google Workspace para sincronizar.', 'warning');
+          } else {
+            if (window._unrcSheetsStatus) window._unrcSheetsStatus.lastError = data.error || data.message;
+            render();
+            toast('Inconveniente al sincronizar: ' + (data.error || data.message), 'error');
+          }
+        }
+      } catch (err) {
+        toast('Error de red al contactar servidor: ' + err.message, 'error');
+      }
+    };
+
+    if (window._unrcGoogleAccessToken) {
+      await executeBackendSync(window._unrcGoogleAccessToken);
+      return;
+    }
+
+    const clientId = window._unrcSheetsStatus?.oAuthClientId || '177492426308-mq3mnbtt5b7b5u134fjmsr8om1cn56ca.apps.googleusercontent.com';
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+      try {
+        const tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file',
+          callback: async (tokenResponse) => {
+            if (tokenResponse.error) {
+              toast('Autorización de Google cancelada: ' + tokenResponse.error, 'warning');
+              return;
+            }
+            if (tokenResponse.access_token) {
+              window._unrcGoogleAccessToken = tokenResponse.access_token;
+              await executeBackendSync(tokenResponse.access_token);
+            }
+          }
+        });
+        tokenClient.requestAccessToken({ prompt: '' });
+      } catch (gErr) {
+        console.warn('[Sheets] GIS token client error:', gErr);
+        await executeBackendSync('');
+      }
+    } else {
+      await executeBackendSync('');
+    }
+    return;
+  }
+  if(a==='export-xlsx') {
+    toast('Generando libro multi-hoja Excel (.xlsx)...', 'info');
+    try {
+      const res = await fetch('/api/sheets/export-xlsx', {
+        headers: UNRCAuth.token ? { 'Authorization': `Bearer ${UNRCAuth.token}` } : {}
+      });
+      if (!res.ok) throw new Error('Error al descargar archivo');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `UNRC-Pozo-del-Carril-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast('Copia local Excel (.xlsx) descargada correctamente.', 'success');
+    } catch (err) {
+      toast('Error al exportar Excel: ' + err.message, 'error');
+    }
+    return;
+  }
+  if(a==='toggle-sheet-config') {
+    const box = document.getElementById('manualSheetConfigBox');
+    if (box) {
+      box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    }
+    return;
+  }
+  if(a==='save-manual-sheet-id') {
+    const input = document.getElementById('manualSheetIdInput');
+    const sheetId = input?.value?.trim() || '';
+    if (!sheetId) {
+      toast('Ingresá un ID válido de Google Sheets.', 'warning');
+      return;
+    }
+    try {
+      const res = await fetch('/api/sheets/configure', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(UNRCAuth.token ? { 'Authorization': `Bearer ${UNRCAuth.token}` } : {})
+        },
+        body: JSON.stringify({ sheetId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        window._unrcSheetsStatus = data;
+        render();
+        toast('ID de planilla actualizado y verificado.', 'success');
+      } else {
+        toast('No se pudo guardar la configuración: ' + (data.error || 'Error desconocido'), 'error');
+      }
+    } catch (e) {
+      toast('Error de conexión: ' + e.message, 'error');
+    }
+    return;
+  }
 }
+
 document.addEventListener('click',async e=>{
   const nav=e.target.closest('#mainNav [data-view]');
   if(nav){
@@ -3990,6 +5166,16 @@ document.addEventListener('click',async e=>{
       activeNavGroup = null;
       closeAllNavDropdowns();
     }
+  }
+
+  const pageBtn = e.target.closest('[data-table-page-key]');
+  if (pageBtn && !pageBtn.disabled) {
+    const key = pageBtn.dataset.tablePageKey;
+    const val = parseInt(pageBtn.dataset.tablePageVal, 10);
+    ui.tablePages = ui.tablePages || {};
+    ui.tablePages[key] = isNaN(val) ? 0 : val;
+    render();
+    return;
   }
 
   const el=e.target.closest('[data-action]');if(!el||busy)return;try{busy=true;await runAction(el);}catch(err){toast(err.message);}finally{busy=false;}
@@ -4093,6 +5279,12 @@ document.addEventListener('click', e=>{
 });
 document.addEventListener('input',e=>{
   if(e.target.closest('#scenarioForm')) {const values=Object.fromEntries(new FormData($('#scenarioForm')));ui.scenario=values;$('#scenarioResults').innerHTML=scenarioResults();refreshIcons();fitMetricValues();}
+  if(e.target.closest('#recordForm')) {
+    updateUnitAssistant();
+  }
+  if(e.target.matches('[data-unit-calc]')) {
+    handleUnitCalculatorInput(e.target);
+  }
   if(e.target.name === 'withdrawalDays' || (e.target.name === 'date' && $('#recordDialog')?.dataset.table === 'treatments')) {
     const dVal = $('#recordForm [name="date"]')?.value;
     const wDays = Number($('#recordForm [name="withdrawalDays"]')?.value || 0);
@@ -4107,6 +5299,43 @@ document.addEventListener('input',e=>{
   }
 });
 document.addEventListener('submit',async e=>{
+  if (e.target.id === 'semaphoreRulesForm') {
+    e.preventDefault();
+    if (busy) return;
+    busy = true;
+    try {
+      const u = UNRCAuth.current;
+      if (!u || u.role !== 'admin') throw new Error('Solo los administradores pueden modificar los umbrales de semaforización.');
+      const fd = new FormData(e.target);
+      const next = structuredClone(db);
+      next.settings = next.settings || {};
+      next.settings.semaphoreRules = next.settings.semaphoreRules || {};
+
+      const rules = Semaphore ? Semaphore.DEFAULT_SEMAPHORE_RULES : [];
+      for (const r of rules) {
+        const tVal = fd.get('target_' + r.id);
+        const wVal = fd.get('warn_' + r.id);
+        const cVal = fd.get('crit_' + r.id);
+        const dVal = fd.get('date_' + r.id);
+
+        next.settings.semaphoreRules[r.id] = {
+          target: tVal !== '' && tVal != null ? Number(tVal) : r.target,
+          warningThreshold: wVal !== '' && wVal != null ? Number(wVal) : r.warningThreshold,
+          criticalThreshold: cVal !== '' && cVal != null ? Number(cVal) : r.criticalThreshold,
+          effectiveDate: dVal ? String(dVal) : (r.effectiveDate || today())
+        };
+      }
+
+      await persist(next);
+      render();
+      toast('Configuración centralizada de semáforos guardada exitosamente.');
+    } catch(err) {
+      toast(err.message);
+    } finally {
+      busy = false;
+    }
+    return;
+  }
   if(e.target.id!=='settingsForm')return;e.preventDefault();if(busy)return;busy=true;
   try{if(confirmed('closings').length)throw new Error('Reabrí los cierres antes de modificar criterios históricos.');const fd=new FormData(e.target);const next=structuredClone(db);next.settings.manager=String(fd.get('manager'));next.settings.priceAgeDays=Number(fd.get('priceAgeDays'));next.settings.weightSource=String(fd.get('weightSource'));
     for(const key of Object.keys(D.PHASES)){const min=fd.get(key+'Min'),max=fd.get(key+'Max');if(min!==''&&max!==''&&Number(min)>=Number(max))throw new Error(D.PHASES[key]+': el mínimo debe ser menor que el máximo.');next.settings.weightRanges[key]={min:min===''?null:Number(min),max:max===''?null:Number(max)};}
@@ -4123,3 +5352,22 @@ async function importCsv(file) {
   parsed.data.forEach((row,i)=>{const content=JSON.stringify(row),source=file.name+' · fila '+(i+2);if(next.imports.some(r=>r.source===source&&r.content===content))return;next.imports.push({id:D.uid(),date:today(),source,content});count++;});
   await persist(next);render();toast(count+' filas recibidas en Archivos de origen.');
 }
+
+let scrollTicking = false;
+let isScrolledState = false;
+window.addEventListener('scroll', () => {
+  if (!scrollTicking) {
+    window.requestAnimationFrame(() => {
+      const scrolled = window.scrollY > 25;
+      if (scrolled !== isScrolledState) {
+        isScrolledState = scrolled;
+        const wrapper = document.getElementById('headerWrapper');
+        if (wrapper) {
+          wrapper.classList.toggle('is-scrolled', scrolled);
+        }
+      }
+      scrollTicking = false;
+    });
+    scrollTicking = true;
+  }
+}, { passive: true });

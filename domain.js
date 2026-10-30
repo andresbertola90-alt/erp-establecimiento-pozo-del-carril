@@ -157,7 +157,45 @@
     const gross = round(kg * num(s.price));
     return { kg, gross, net: round(gross + num(s.tax) + num(s.perceptions) - num(s.retentions) - num(s.fees)) };
   };
+  const _replayCache = new WeakMap();
+  const _resultsCache = new WeakMap();
+  const _indicatorsCache = new WeakMap();
+
+  function _fingerprint(db) {
+    if (!db) return 0;
+    let fp = 0;
+    for (let i = 0; i < TABLES.length; i++) {
+      const arr = db[TABLES[i]];
+      if (arr && arr.length) {
+        fp = ((fp << 5) - fp + arr.length) | 0;
+        const last = arr[arr.length - 1];
+        if (last) {
+          fp = ((fp << 5) - fp + (last.sequence || 0)) | 0;
+        }
+      }
+    }
+    return fp;
+  }
+
   function replay(db, cutoff = '9999-12-31') {
+    if (db && typeof db === 'object') {
+      const fp = _fingerprint(db);
+      let entry = _replayCache.get(db);
+      if (entry && entry.fp === fp && entry.cache && entry.cache[cutoff]) {
+        return entry.cache[cutoff];
+      }
+      const out = _computeReplay(db, cutoff);
+      if (!entry || entry.fp !== fp) {
+        entry = { fp, cache: {} };
+        _replayCache.set(db, entry);
+      }
+      entry.cache[cutoff] = out;
+      return out;
+    }
+    return _computeReplay(db, cutoff);
+  }
+
+  function _computeReplay(db, cutoff = '9999-12-31') {
     const animalAccount=lot=>Plan.enabled(db)?Plan.lotAccount(lot):legacyAnimalAccount(lot.phase);
     const out = { lots: {}, stock: {}, campaigns: {}, journal: [], memo: [], errors: [], feed: [], weights: [], documents: {}, depreciation: [], production: [], sold: [] };
     const sequence = new Map(TABLES.flatMap(t => db[t].map(r => [r.id, num(r.sequence)])));
@@ -311,7 +349,27 @@
     for (const e of events) { current = e; try { e.run(); } catch (err) { out.errors.push({ id: e.id, date: e.date, message: err.message }); break; } }
     return out;
   }
+
   function results(db, from, to) {
+    if (db && typeof db === 'object') {
+      const fp = _fingerprint(db);
+      const key = (from || '') + '|' + (to || '');
+      let entry = _resultsCache.get(db);
+      if (entry && entry.fp === fp && entry.cache && entry.cache[key]) {
+        return entry.cache[key];
+      }
+      const out = _computeResults(db, from, to);
+      if (!entry || entry.fp !== fp) {
+        entry = { fp, cache: {} };
+        _resultsCache.set(db, entry);
+      }
+      entry.cache[key] = out;
+      return out;
+    }
+    return _computeResults(db, from, to);
+  }
+
+  function _computeResults(db, from, to) {
     const state = replay(db, to);
     const areas = Object.fromEntries(Object.keys(AREAS).map(a => [a, { revenue: 0, expense: 0, book: 0, management: 0, cash: 0 }]));
     for (const j of state.journal.filter(j => j.date >= from)) {
@@ -368,7 +426,27 @@
 
     return { state, areas, groups, consolidated, adjustment, pending: TABLES.reduce((n, t) => n + db[t].filter(r => r.review && !r.voided && (!r.date || r.date <= to)).length, 0) };
   }
+
   function indicators(db, from, to) {
+    if (db && typeof db === 'object') {
+      const fp = _fingerprint(db);
+      const key = (from || '') + '|' + (to || '');
+      let entry = _indicatorsCache.get(db);
+      if (entry && entry.fp === fp && entry.cache && entry.cache[key]) {
+        return entry.cache[key];
+      }
+      const out = _computeIndicators(db, from, to);
+      if (!entry || entry.fp !== fp) {
+        entry = { fp, cache: {} };
+        _indicatorsCache.set(db, entry);
+      }
+      entry.cache[key] = out;
+      return out;
+    }
+    return _computeIndicators(db, from, to);
+  }
+
+  function _computeIndicators(db, from, to) {
     const state = replay(db, to); const closed = active(db.births).filter(b => b.closed && b.weanDate >= from && b.weanDate <= to);
     const alive = sum(closed, b => b.bornAlive); const weaned = sum(closed, b => b.weaned); const deaths = sum(closed, b => b.losses);
     const rows = active(db.lots).map(l => {

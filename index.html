@@ -16,62 +16,67 @@
   <body class="auth-active">
     <main id="authRoot" class="auth-root"><p role="status">Abriendo el acceso...</p></main>
     <div class="app-shell" id="appShell" hidden>
-      <header class="app-topbar" id="topHeader">
-        <div class="topbar-brand">
-          <div class="brand-logos">
-            <img class="logo-field" src="./assets/logo-pozo-del-carril.svg" alt="Establecimiento Pozo del Carril">
-          </div>
-          <div class="brand-text">
-            <div class="brand-title-row">
-              <span class="brand-name">Establecimiento Pozo del Carril</span>
+      <div class="app-header-wrapper" id="headerWrapper">
+        <header class="app-topbar" id="topHeader">
+          <div class="topbar-brand">
+            <div class="brand-logos">
+              <img class="logo-field" src="./assets/logo-pozo-del-carril.svg" alt="Establecimiento Pozo del Carril">
             </div>
-            <span class="brand-sub">Universidad Nacional de Río Cuarto · FCE</span>
-          </div>
-        </div>
-
-        <div class="topbar-center">
-          <div class="currency-widget" id="currencyWidget">
-            <span class="widget-label">Cotización BNA:</span>
-            <div class="currency-toggle" role="group" aria-label="Moneda activa">
-              <button type="button" class="currency-btn active" data-currency="USD" id="btnCurrUSD">USD</button>
-              <button type="button" class="currency-btn" data-currency="ARS" id="btnCurrARS">ARS</button>
+            <div class="brand-text">
+              <div class="brand-title-row">
+                <span class="brand-name">Establecimiento Pozo del Carril</span>
+              </div>
+              <span class="brand-sub">Universidad Nacional de Río Cuarto · FCE</span>
             </div>
-            <span class="bna-rate" id="bnaRateDisplay" title="Tipo de cambio oficial Banco Nación (Dólar Vendedor Billete)">$ 1.550,00</span>
-            <button type="button" class="tool-btn-sm" data-action="quick-bna" title="Actualizar cotización BNA en vivo (Dólar Vendedor Billete)" aria-label="Actualizar cotización BNA en vivo">
-              <i data-lucide="refresh-cw" aria-hidden="true"></i>
-            </button>
           </div>
 
-          <div class="sync-widget" id="syncWidget" data-action="storage-info" title="Almacenamiento: Servidor local persistente y caché local IndexedDB">
-            <span class="sync-dot" aria-hidden="true" style="background:#10b981"></span>
-            <span id="storageStatus">Sincronizado con el servidor</span>
-          </div>
-        </div>
+          <div class="topbar-center">
+            <div class="currency-widget" id="currencyWidget">
+              <span class="widget-label">Cotización BNA:</span>
+              <div class="currency-toggle" role="group" aria-label="Moneda activa">
+                <button type="button" class="currency-btn active" data-currency="USD" id="btnCurrUSD">USD</button>
+                <button type="button" class="currency-btn" data-currency="ARS" id="btnCurrARS">ARS</button>
+              </div>
+              <span class="bna-rate" id="bnaRateDisplay" title="Tipo de cambio oficial Banco Nación (Dólar Vendedor Billete)">$ 1.550,00</span>
+              <button type="button" class="tool-btn-sm" data-action="quick-bna" title="Actualizar cotización BNA en vivo (Dólar Vendedor Billete)" aria-label="Actualizar cotización BNA en vivo">
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+              </button>
+            </div>
 
-        <div class="topbar-actions">
-          <div class="quick-actions-bar">
-            <button type="button" class="btn-quick quick-green" data-action="quick-lote" title="Registrar nuevo lote productivo">
-              <i data-lucide="plus" aria-hidden="true"></i>+ Lote
-            </button>
-            <button type="button" class="btn-quick quick-cyan" data-action="quick-venta" title="Registrar venta de hacienda o cereal">
-              <i data-lucide="handshake" aria-hidden="true"></i>+ Venta
-            </button>
-            <button type="button" class="btn-quick quick-rose" data-action="quick-costo" title="Registrar costo o compra de insumos">
-              <i data-lucide="receipt" aria-hidden="true"></i>+ Costo
-            </button>
-            <button type="button" class="btn-quick quick-purple" data-action="quick-sanidad" title="Registrar tratamiento veterinario o vacuna">
-              <i data-lucide="heart-pulse" aria-hidden="true"></i>+ Sanidad
-            </button>
-            <button type="button" class="btn-quick quick-slate" data-action="navigate" data-view="manual" title="Manual de usuario e instrucciones">
-              <i data-lucide="book-open" aria-hidden="true"></i>Manual
-            </button>
+            <div class="sync-widget" id="syncWidget" data-action="storage-info" title="Almacenamiento: Servidor local persistente y caché local IndexedDB">
+              <span class="sync-dot" aria-hidden="true" style="background:#10b981"></span>
+              <span id="storageStatus">Sincronizado con el servidor</span>
+            </div>
           </div>
 
-          <div id="sessionBar" class="session-bar"></div>
-        </div>
-      </header>
+          <div class="topbar-actions">
+            <div class="quick-actions-bar">
+              <button type="button" class="btn-quick quick-green" data-action="quick-lote" title="Registrar nuevo lote productivo">
+                <i data-lucide="plus" aria-hidden="true"></i>+ Lote
+              </button>
+              <button type="button" class="btn-quick quick-cyan" data-action="quick-venta" title="Registrar venta de hacienda o cereal">
+                <i data-lucide="handshake" aria-hidden="true"></i>+ Venta
+              </button>
+              <button type="button" class="btn-quick quick-rose" data-action="quick-costo" title="Registrar costo o compra de insumos">
+                <i data-lucide="receipt" aria-hidden="true"></i>+ Costo
+              </button>
+              <button type="button" class="btn-quick quick-purple" data-action="quick-sanidad" title="Registrar tratamiento veterinario o vacuna">
+                <i data-lucide="heart-pulse" aria-hidden="true"></i>+ Sanidad
+              </button>
+              <button type="button" class="btn-quick quick-slate" data-action="navigate" data-view="ayuda" title="Centro de Ayuda y Asistencia al Usuario">
+                <i data-lucide="circle-help" aria-hidden="true"></i>Ayuda
+              </button>
+              <button type="button" class="btn-quick quick-slate" data-action="navigate" data-view="manual" title="Manual de usuario e instrucciones">
+                <i data-lucide="book-open" aria-hidden="true"></i>Manual
+              </button>
+            </div>
 
-      <nav class="app-nav" id="mainNav" aria-label="Módulos del sistema"></nav>
+            <div id="sessionBar" class="session-bar"></div>
+          </div>
+        </header>
+
+        <nav class="app-nav" id="mainNav" aria-label="Módulos del sistema"></nav>
+      </div>
 
       <div class="workspace">
         <section class="kpi-executive-banner" id="kpiBanner" aria-label="Indicadores ejecutivos clave"></section>
@@ -94,6 +99,7 @@
           <button class="icon-btn" value="cancel" type="button" data-action="close-dialog" aria-label="Cerrar">×</button>
         </div>
         <div class="form-grid" id="dialogFields"></div>
+        <div id="dialogUnitAssistant" class="dialog-unit-assistant" style="display:none; margin:10px 0; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; font-size:0.85rem; color:#166534"></div>
         <p id="formError" class="form-error" role="alert" hidden></p>
         <div class="dialog-actions">
           <button class="btn ghost" value="cancel" type="button" data-action="close-dialog">Cancelar</button>
@@ -113,8 +119,10 @@
     <dialog id="alertsDialog" class="record-dialog alerts-dialog" aria-label="Centro de alertas"></dialog>
     <dialog id="rateDialog" class="record-dialog rate-dialog" aria-label="Cotización BNA"></dialog>
     <dialog id="csvWizardDialog" class="record-dialog" aria-label="Asistente de Importación CSV" style="padding:0; border:none; border-radius:10px; background:transparent"></dialog>
+    <dialog id="welcomeTourDialog" class="record-dialog welcome-tour-dialog" aria-label="Bienvenido al ERP"></dialog>
     <div id="printRoot"></div>
 
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="./assets/lucide.min.js"></script>
     <script src="./assets/papaparse.min.js"></script>
     <script src="./assets/exceljs.min.js"></script>
@@ -128,6 +136,10 @@
     <script src="./auth.js"></script>
     <script src="./storage.js"></script>
     <script src="./csv-ui.js"></script>
+    <script src="./units-engine.js"></script>
+    <script src="./semaphore-engine.js"></script>
+    <script src="./help-engine.js"></script>
+    <script src="./help-ui.js"></script>
     <script src="./interface.js"></script>
     <script src="./journal-ui.js"></script>
     <script src="./audit-ui.js"></script>

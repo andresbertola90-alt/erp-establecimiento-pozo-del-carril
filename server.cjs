@@ -426,13 +426,29 @@ async function handleApiRequest(req, res, pathname) {
   }
 
   if (pathname === '/api/sheets/sync' && req.method === 'POST') {
-    if (!actor || actor.role === 'auditor') {
-      sendJson(res, 403, { error: 'No autorizado para sincronizar con Google Sheets.' });
+    if (!actor || actor.role !== 'admin') {
+      sendJson(res, 403, { error: 'Acceso denegado: la sincronización con Google Sheets está reservada exclusivamente para el Administrador.' });
       return;
     }
-    const db = dbModule.getDatabase();
-    const result = await sheetsModule.syncToGoogleSheets(db);
-    sendJson(res, result.success ? 200 : 400, result);
+    try {
+      const body = await readBody(req);
+      let googleAccessToken = body?.googleAccessToken || '';
+      if (!googleAccessToken && req.headers['x-google-access-token']) {
+        googleAccessToken = req.headers['x-google-access-token'];
+      }
+      if (!googleAccessToken && req.headers['authorization'] && req.headers['authorization'].startsWith('Bearer ya29.')) {
+        googleAccessToken = req.headers['authorization'].slice(7);
+      }
+
+      const db = dbModule.getDatabase();
+      const result = await sheetsModule.syncToGoogleSheets(db, {
+        googleAccessToken,
+        sheetId: body?.sheetId
+      });
+      sendJson(res, result.success ? 200 : 400, result);
+    } catch (err) {
+      sendJson(res, 500, { success: false, error: err.message });
+    }
     return;
   }
 

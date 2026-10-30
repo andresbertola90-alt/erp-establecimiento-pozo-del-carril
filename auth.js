@@ -132,6 +132,15 @@
     return result.user;
   }
 
+  async function updateRole(id, role) {
+    await requireSession(true);
+    const result = await apiFetch(`/api/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role })
+    });
+    return result.user;
+  }
+
   async function switchableUsers() {
     try {
       const users = await listUsers();
@@ -183,6 +192,7 @@
     listAudit,
     switchableUsers,
     setActive,
+    updateRole,
     changePassword,
     resetPassword,
     recover,
