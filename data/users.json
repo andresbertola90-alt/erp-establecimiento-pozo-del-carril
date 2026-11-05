@@ -1,188 +1,68 @@
 [
   {
     "id": "59effc16-0c10-41a5-bbe2-4a53b2ad084a",
-    "username": "admin",
+    "username": "Admin",
     "name": "Administrador UNRC",
     "role": "admin",
     "active": true,
     "salt": "1d5d24bb35cc5f6ec79a75aa96d16159",
     "hash": "a7f51a5d71979343267af129cf6c754853743a64dc402942613b299b3e5dd89b",
-    "createdAt": "2026-10-23T18:01:38.946Z"
+    "recoveryHash": "02822fd2fa8eab7f038e5541f7e013964bca4b906d479b79b77fe7c63b4a4ce4",
+    "createdAt": "2026-10-31T13:08:20.502Z"
   },
   {
     "id": "63e72853-4d80-4fc7-a9d2-4cbdd46ef2fa",
-    "username": "agricultura",
-    "name": "Ing. Agrónomo - Responsable de Agricultura",
+    "username": "SusanaMussolini1",
+    "name": "Susana Mussolini - Responsable de Agricultura",
     "role": "responsable_agricultura",
     "active": true,
-    "salt": "f00226c3f6e941157810fff86cb95a54",
-    "hash": "3d9c91cd7aaa99992d8ad58cc1d5541eef80f90a81d38d952ce0a7f5e992bd9e",
-    "recoveryHash": "cfb05b923e1184d5bcb7ac112868547c36be192c128cf8eafb1290de934aa9ea",
-    "createdAt": "2026-10-30T16:35:36.235Z"
+    "salt": "1fe91eafff2ed52ddb592c935dfda20f",
+    "hash": "874b29e36fece9fe47342790576f195dc8e15607984a2bff9f7b2a8f9210ee59",
+    "recoveryHash": "750c6d2f47cad362bc6a1cdde716b5d1b64f86aef6a547bfe75b1a92f45ac524",
+    "createdAt": "2026-10-31T13:08:20.522Z"
   },
   {
     "id": "094c1b5c-3bae-47e4-9e89-003211b159e0",
-    "username": "ganaderia",
-    "name": "Méd. Veterinario - Responsable de Ganadería",
+    "username": "JuanGallardo",
+    "name": "Juan Gallardo - Responsable de Ganadería",
     "role": "responsable_ganaderia",
     "active": true,
-    "salt": "5910a650b24eaa210d872481871fd0ec",
-    "hash": "2be6c64f2806ad2617e44f1e10aba335254f477d523c9e5b53c8e6e7541b2b86",
-    "recoveryHash": "d3cf895fd300a5e624ad3488ea1b3b4b25e812a5b8ebb0459acd0d28933474be",
-    "createdAt": "2026-10-30T16:35:36.289Z"
+    "salt": "88a957632db62da138a68cc8120cbe47",
+    "hash": "0cad3fab936d06ac666ea408414f323b0c5bfd6fa74eaa91cbd605bb91eddf5b",
+    "recoveryHash": "c427cdf0d75bc8ef9ebc9aad9980a2cd36d97e5bfe14281b49b249df01116090",
+    "createdAt": "2026-10-31T13:08:20.540Z"
   },
   {
     "id": "3558d427-da77-4e5d-889e-2a894353f71d",
-    "username": "analista",
-    "name": "Lic. Economía - Usuario Analista",
+    "username": "LuisGabriel",
+    "name": "Luis Gabriel - Usuario Analista",
     "role": "analista",
     "active": true,
-    "salt": "a648f98e7ef880e9e8d42b8f28909bac",
-    "hash": "140ee6f3f5907cb7c1f99be8e11c587d6a86160df6cfb3c2ac8be996dece25ed",
-    "recoveryHash": "cf359d73723c85c32f981f74df1fa4e14b5b2eaccebf44f8a844e75c9ff1bb22",
-    "createdAt": "2026-10-30T16:35:36.342Z"
+    "salt": "62b99bef3e08de6b2c30030c73d8cfb2",
+    "hash": "44cc710d000c37cced6e2aa7d459e167b662c204c5f47ab8b3703fa2e045baee",
+    "recoveryHash": "f80283711512e73f8ff528c308398a5290f6cc2b3f1a8ff1bb33f1d4e731a217",
+    "createdAt": "2026-10-31T13:08:20.562Z"
   },
   {
     "id": "3147026f-3b0b-4276-bf05-92ab92aa7dfc",
-    "username": "auditor",
-    "name": "Auditor Académico - Auditoría y Control",
+    "username": "VirginiaCassano",
+    "name": "Virginia Cassano - Auditor Académico",
     "role": "auditor",
     "active": true,
-    "salt": "bc3386a70ab5e1e6182505d2c6bc3779",
-    "hash": "e4a1e5632d08756933fa204936ef038f55398eab44314607f4d07b8d0afcfda2",
-    "recoveryHash": "9b9edf82f82ec3209386560ea2b3f876e7deed8862c4984292c8918401c558cd",
-    "createdAt": "2026-10-30T16:35:36.395Z"
+    "salt": "73e4cc5ca40f2a94770c5e1c9c1c2ba2",
+    "hash": "da04b9e4891cffb68679126a9f6e14e816242b1836e3e384659e93cf1caab5dc",
+    "recoveryHash": "7afd167fc5e37b50cc287d590715f2c25c0333d53f527decf9f336d230672fde",
+    "createdAt": "2026-10-31T13:08:20.581Z"
   },
   {
-    "id": "f478c755-1963-40d1-802d-3a221f063f01",
-    "username": "agri_1793378153145",
-    "name": "Carlos Agronomo",
-    "role": "responsable_agricultura",
+    "id": "fbc8214c-bcee-4a91-8150-da573ba7a4ce",
+    "username": "DemoUNRC",
+    "name": "Demo UNRC - Usuario Analista",
+    "role": "analista",
     "active": true,
-    "salt": "1804bc8bb30c3d33f62556e4a37aed6e",
-    "hash": "6c164b6fdc725110176abf140bfd4c3b969db0d5eb2c36f48e98dc0f7c12f8e4",
-    "recoveryHash": "156070ca038a9b92ead11b9b2910108dee387465697cea5d20171c8e7b620eba",
-    "createdAt": "2026-10-30T16:35:53.204Z"
-  },
-  {
-    "id": "053e494f-2502-4e25-b412-995d60b4177c",
-    "username": "cerdos_1793378153145",
-    "name": "Marta Porcina",
-    "role": "responsable_cerdos",
-    "active": true,
-    "salt": "3761656d8597f5626fd5be222f2d423f",
-    "hash": "509d6fdc0e8d2b692970ea4139b6d05be98b64f92545862ae4b76652ff6d7f47",
-    "recoveryHash": "62655c7adbe07e9a64eed00a7f68131b1df63f2e49e4e14e2a3a06a13ec7e6fb",
-    "createdAt": "2026-10-30T16:35:53.260Z"
-  },
-  {
-    "id": "ddb50e8c-cfc8-4203-bd5e-6041f775665c",
-    "username": "auditor_1793378153145",
-    "name": "Juan Auditor",
-    "role": "auditor",
-    "active": true,
-    "salt": "7cd390fb3447d8c0a3f63df086438589",
-    "hash": "90cc8779ec2ada5a325217446e4dcfb64a65ff9e745d6ae42559038bbdf9a71f",
-    "recoveryHash": "7316076517d9cf984b3817ec5a0c53a1378191849fd224109b357c4803cae543",
-    "createdAt": "2026-10-30T16:35:53.318Z"
-  },
-  {
-    "id": "9e6bd461-862d-408a-ad79-256ede854add",
-    "username": "testuser156545",
-    "name": "Usuario Prueba Default",
-    "role": "responsable_agricultura",
-    "active": true,
-    "salt": "cbfd9b4ea191641b9be97381127cd882",
-    "hash": "bcbf4bf0ba0476d21aec3ba44dd43b4572e922ff72c403fbda7bb19a298d8bde",
-    "recoveryHash": "ca71a97fffc66473593198136f32e213cd85a35619e148bc4fb09dbc9b9c2c0d",
-    "createdAt": "2026-10-30T16:35:56.601Z"
-  },
-  {
-    "id": "8c9b207a-08ac-462d-82c1-b0cd1342adbf",
-    "username": "agri_1793379255528",
-    "name": "Carlos Agronomo",
-    "role": "responsable_agricultura",
-    "active": true,
-    "salt": "8e1e6ae51744a3b5554f9fdecf1f85db",
-    "hash": "257ab77ccbfc8dfca71de2a2d47278f479f67ab4986f419a3f98c6e603d77ab9",
-    "recoveryHash": "1ba0d3957f743b49a1807adce6ac073c55cde850cac62e7387299e2560529fbc",
-    "createdAt": "2026-10-30T16:54:15.587Z"
-  },
-  {
-    "id": "7bef98d2-2273-44bc-9af5-2202158f937e",
-    "username": "cerdos_1793379255528",
-    "name": "Marta Porcina",
-    "role": "responsable_cerdos",
-    "active": true,
-    "salt": "d6f05c42e70bbcbd47e518c9cf92d2ed",
-    "hash": "0c6746eab08d0574d207ea63213da9f2d6173c44aa831459fb56088665a2198b",
-    "recoveryHash": "c9890d9213ad73a2c99095fe2761123c1066029004c8be4735195059a19c2a6d",
-    "createdAt": "2026-10-30T16:54:15.645Z"
-  },
-  {
-    "id": "1475b877-eead-473c-ac39-2d8b5272ff6d",
-    "username": "auditor_1793379255528",
-    "name": "Juan Auditor",
-    "role": "auditor",
-    "active": true,
-    "salt": "d9f7a2e74c8f4cb37056ec324465c747",
-    "hash": "78e05a12b138e52c24b6fcde6bff1ac3fe06ee4b1f3f75e3afd7f5bc2209a6c5",
-    "recoveryHash": "1d3fc928b49d8f021461dfb575bc18ad17c9d45accc8533a952f46f94f26a328",
-    "createdAt": "2026-10-30T16:54:15.703Z"
-  },
-  {
-    "id": "9dbe42d8-5037-4310-aa2c-5234f7665fa7",
-    "username": "testuser258848",
-    "name": "Usuario Prueba Default",
-    "role": "responsable_agricultura",
-    "active": true,
-    "salt": "ab91800fe2652d5dabea726bcecf1a73",
-    "hash": "5b6d4e56835cdf7f9d6cacad64daae3bdc9bf5d3546eebcbf2d0d8d21fb611f6",
-    "recoveryHash": "780a17a660e4d5efc7d8eeb46586eba19551c74bf9c571192fe62b73e15d896f",
-    "createdAt": "2026-10-30T16:54:18.902Z"
-  },
-  {
-    "id": "71d9b284-9eea-4df9-9b56-5e5f9e615db3",
-    "username": "agri_1793379577564",
-    "name": "Carlos Agronomo",
-    "role": "responsable_agricultura",
-    "active": true,
-    "salt": "97ae11e6f98ece1b47f30d1b41c3f20e",
-    "hash": "edab78e822b2ec286115b040db36a215c9f9aa86e9eb2809bc968b1644ac2880",
-    "recoveryHash": "257d3a0ba078d010d5c16a3ccf75640c6addabfc7f6c2ac54b4670b72e7fe228",
-    "createdAt": "2026-10-30T16:59:37.624Z"
-  },
-  {
-    "id": "b7b2bafd-9234-42b3-9f3f-a2313516e213",
-    "username": "cerdos_1793379577564",
-    "name": "Marta Porcina",
-    "role": "responsable_cerdos",
-    "active": true,
-    "salt": "493b50d364a75c9ae9c44641d176622b",
-    "hash": "0824fce9014fe246a1d861451e84804e1ddb0e6bbbe8dbd1f677056d4a5238f7",
-    "recoveryHash": "24786fc35954579e42c47f7ad8d8ef388d08b240319a7d6357c85f3cc2352e5c",
-    "createdAt": "2026-10-30T16:59:37.683Z"
-  },
-  {
-    "id": "1c145ede-b59e-4629-a72b-2593c82a26e6",
-    "username": "auditor_1793379577564",
-    "name": "Juan Auditor",
-    "role": "auditor",
-    "active": true,
-    "salt": "53412ef95f04895f1f51d2e9f38ea3d7",
-    "hash": "4fcb3a93071e40d95d12302f4e4884aee97ae3f62b63a840cdfdf92f7926f177",
-    "recoveryHash": "00eb99f3c60840a6505c5ec71e26f1ec64fe9f501b5fda372fd7a6c2c02f15f0",
-    "createdAt": "2026-10-30T16:59:37.742Z"
-  },
-  {
-    "id": "a4eb65ae-991b-4d26-abd8-547dc3790199",
-    "username": "testuser580847",
-    "name": "Usuario Prueba Default",
-    "role": "responsable_agricultura",
-    "active": true,
-    "salt": "ae46aa846b2cb86ca0ee93c262832275",
-    "hash": "7d609fe273e95e48db70250750ab18f3dad9fe78f1de42bb38924b8abe577070",
-    "recoveryHash": "021ad10e0c6a0fb5d5826957e1de9201c646af203127f00c0375e5abcf47cb8e",
-    "createdAt": "2026-10-30T16:59:40.902Z"
+    "salt": "9133605aba83857372525ab8a299c27d",
+    "hash": "0ed05267fc8fdd72f5f1b3e62150afbb606a6fa27fb9c39dd0489966fc2cfaff",
+    "recoveryHash": "be693e9c28a5fec0a6c968bfc27fd04f7b4409c428b532f8b253e11fb9d2569f",
+    "createdAt": "2026-11-04T19:29:23.748Z"
   }
 ]

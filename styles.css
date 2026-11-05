@@ -303,10 +303,13 @@ button {
 }
 
 .select-wrap span,
-.field label {
-  color: #14263D;
-  font-size: 0.92rem;
-  font-weight: 800;
+.field label,
+.field > span {
+  color: #0f172a;
+  font-size: 0.88rem;
+  font-weight: 700;
+  display: block;
+  margin-bottom: 2px;
 }
 
 select,
@@ -314,13 +317,14 @@ input,
 textarea {
   width: 100%;
   min-height: 44px;
-  border: 1.5px solid #cfb2b9;
+  border: 1.5px solid #cbd5e1;
   border-radius: var(--radius-sm);
   background: #ffffff;
-  color: #1c1015;
+  color: #0f172a;
   padding: 10px 12px;
-  font-size: 1rem;
+  font-size: 0.96rem;
   outline: none;
+  box-sizing: border-box;
 }
 
 textarea {
@@ -395,6 +399,7 @@ textarea:focus {
   gap: 8px;
   padding: 9px 13px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .btn:hover,

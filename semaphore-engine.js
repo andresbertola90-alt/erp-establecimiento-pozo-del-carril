@@ -534,18 +534,26 @@
   ];
 
   /**
-   * Obtiene la regla activa para un indicador desde db.settings o el catálogo predeterminado
+   * Obtiene la regla activa para un indicador desde db.settings o el catálogo predeterminado.
+   * Admite llamadas tanto getRule(ruleId) como getRule(db, ruleId).
    */
-  function getRule(db, ruleId) {
-    const def = DEFAULT_SEMAPHORE_RULES.find(r => r.id === ruleId) || null;
+  function getRule(dbOrId, ruleId) {
+    let db = null;
+    let id = ruleId;
+    if (typeof dbOrId === 'string' && !ruleId) {
+      id = dbOrId;
+    } else {
+      db = dbOrId;
+    }
+    const def = DEFAULT_SEMAPHORE_RULES.find(r => r.id === id) || null;
     const customRules = db?.settings?.semaphoreRules;
     if (!customRules) return def;
     if (Array.isArray(customRules)) {
-      const found = customRules.find(r => r.id === ruleId);
+      const found = customRules.find(r => r.id === id);
       return found ? { ...(def || {}), ...found } : def;
     }
-    if (typeof customRules === 'object' && customRules[ruleId]) {
-      return { ...(def || {}), ...customRules[ruleId], id: ruleId };
+    if (typeof customRules === 'object' && customRules[id]) {
+      return { ...(def || {}), ...customRules[id], id: id };
     }
     return def;
   }
@@ -1104,12 +1112,16 @@
     const st = evalRes.state || 'gray';
     const borderColor = st === 'green' ? '#22c55e' : st === 'yellow' ? '#eab308' : st === 'red' ? '#ef4444' : '#94a3b8';
     const bgColor = st === 'green' ? '#f0fdf4' : st === 'yellow' ? '#fefce8' : st === 'red' ? '#fef2f2' : '#f8fafc';
+    const ruleKey = evalRes.ruleId || evalRes.id || '';
 
     return `
-      <article class="metric" style="border-top: 4px solid ${borderColor}; background: ${bgColor}; padding: 14px 16px; border-radius: 8px; position: relative">
+      <article class="metric" data-kpi-interactive="true" data-kpi-id="${escapeHtml(ruleKey)}" title="Click para ver evolución mensual" style="border-top: 4px solid ${borderColor}; background: ${bgColor}; padding: 14px 16px; border-radius: 8px; position: relative">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px">
           <p style="margin:0; font-size:0.83rem; font-weight:700; color:#1e293b">${escapeHtml(evalRes.name)}</p>
-          ${renderSemaphoreBadge(evalRes, true)}
+          <div style="display:flex; align-items:center; gap:6px">
+            ${renderSemaphoreBadge(evalRes, true)}
+            <span class="kpi-interactive-cue" title="Evolución temporal">📈</span>
+          </div>
         </div>
         <strong style="font-size:1.45rem; line-height:1.2; color:${st === 'red' ? '#991b1b' : '#0f172a'}">
           ${escapeHtml(evalRes.formattedValue)}

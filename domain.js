@@ -1,7 +1,7 @@
 (function (root) {
   'use strict';
   const Plan=typeof module!=='undefined'&&module.exports?require('./assets/account-plan.js'):root.UNRCAccountPlan;
-  const TABLES = ['accounts', 'parties', 'products', 'campaigns', 'lots', 'sows', 'births', 'movements', 'costs', 'stock', 'transfers', 'sales', 'payments', 'prices', 'allocations', 'entries', 'closings', 'scenarios', 'imports'];
+  const TABLES = ['accounts', 'parties', 'products', 'campaigns', 'lots', 'sows', 'births', 'movements', 'costs', 'stock', 'transfers', 'sales', 'payments', 'prices', 'allocations', 'entries', 'closings', 'scenarios', 'imports', 'rainfalls', 'bovines'];
   const BUSINESS_UNITS = [
     { id: 'porcinos', code: 'POR', name: 'Porcinos', group: 'ganaderia', kind: 'semi_intensivo', description: 'Ciclo cerrado semi-intensivo (Cría, Recría, Terminación)' },
     { id: 'bovinos', code: 'BOV', name: 'Bovinos', group: 'ganaderia', kind: 'bovinos', description: 'Ciclo de carne (Cría, Recría, Adaptación, Engorde)' },
@@ -47,7 +47,7 @@
   const requireDate = d => { if (!dateOK(d)) fail('Completá una fecha válida.'); };
   const positive = (n, label, zero = false) => { if (!Number.isFinite(num(n)) || num(n) < 0 || (!zero && num(n) === 0)) fail(label + ': ingresá un número ' + (zero ? 'no negativo.' : 'mayor que cero.')); };
   function initial() {
-    const db = { version: 4, workflowVersion: 1, revision: 0, settings: { farmName: 'Establecimiento Pozo del Carril', manager: '', sector: 'Pozo del Carril', phaseLimits: {}, weightRanges: {}, priceAgeDays: 14, allocationCriterion: 'Destetados del mes', currency: 'ARS', thresholds: { withdrawalDaysWarning: 5, icaWarning: 2.8, icaCritical: 3.2, mortalityWarning: 3.0, mortalityCritical: 5.0, grainStockWarning: 10000, grainStockCritical: 3000 } }, legacy: null };
+    const db = { version: 4, workflowVersion: 1, revision: 0, settings: { farmName: 'Entre Surcos · Pozo del Carril', manager: '', sector: 'Pozo del Carril', phaseLimits: {}, weightRanges: {}, priceAgeDays: 14, allocationCriterion: 'Destetados del mes', currency: 'ARS', weatherLocation: { name: 'La Aguada · Pozo del Carril, Córdoba', latitude: -33.125, longitude: -64.350, elevation: 440, timezone: 'America/Argentina/Cordoba' }, thresholds: { withdrawalDaysWarning: 5, icaWarning: 2.8, icaCritical: 3.2, mortalityWarning: 3.0, mortalityCritical: 5.0, grainStockWarning: 10000, grainStockCritical: 3000 } }, legacy: null };
     TABLES.forEach(t => db[t] = []);
     db.accounts = ACCOUNTS.map(([code, name, kind]) => ({ id: code, code, name, kind }));
     return db;
@@ -74,7 +74,7 @@
   function validate(db, table, r) {
     if (r.review || r.voided || table === 'imports') return;
     if (['parties', 'products', 'campaigns', 'lots', 'sows', 'accounts'].includes(table) && !String(r.name || '').trim()) fail('Completá el nombre.');
-    if (!['parties', 'products', 'accounts', 'imports'].includes(table) || r.date != null) requireDate(r.date);
+    if (!['parties', 'products', 'accounts', 'imports', 'bovines'].includes(table) || r.date != null) requireDate(r.date);
     if (r.area && !AREAS[r.area] && r.area !== 'comun') fail('Seleccioná Cerdos o Agricultura.');
     if (['costs', 'stock', 'sales', 'entries'].includes(table) && !AREAS[r.area] && !(table === 'costs' && r.area === 'comun')) fail('Seleccioná la actividad.');
     if (table === 'accounts') {
@@ -149,6 +149,17 @@
       for(const line of r.lines)for(const side of ['debit','credit']){const amount=num(line[side]);if(!Number.isSafeInteger(Math.round(amount*100))||Math.abs(amount*100-Math.round(amount*100))>.0001)fail('Los importes del asiento deben tener como máximo dos decimales y estar dentro del rango permitido.');}
       for (const l of r.lines) { const account=ref(db, 'accounts', l.accountId, 'una cuenta');if(!Plan.selectable(account))fail('Los títulos y registros físicos no admiten importes en el libro diario.'); positive(l.debit, 'Debe', true); positive(l.credit, 'Haber', true); if ((num(l.debit) > 0) === (num(l.credit) > 0)) fail('Cada renglón debe tener Debe o Haber, no ambos.'); if (!Plan.manual(account)||!account.planVersion&&/^1\.(3|4|5)/.test(l.accountId)) fail('Los activos productivos se modifican desde sus movimientos, no desde un asiento manual.'); }
       if (Math.abs(sum(r.lines, l => l.debit) - sum(r.lines, l => l.credit)) > .005) fail('El asiento no está balanceado.');
+    }
+    if (table === 'rainfalls') {
+      requireDate(r.date);
+      positive(r.millimeters ?? r.mm, 'Milímetros');
+    }
+    if (table === 'bovines') {
+      if (!r.caravana || !String(r.caravana).trim()) fail('Completá el número de caravana.');
+      const cleanCaravana = String(r.caravana).trim().toUpperCase();
+      if (active(db.bovines).some(b => b.id !== r.id && String(b.caravana).trim().toUpperCase() === cleanCaravana)) {
+        fail(`Ya existe un bovino activo registrado con la caravana "${cleanCaravana}".`);
+      }
     }
   }
   const saleValue = s => {
@@ -520,12 +531,13 @@
     validate(next, table, r);
     if (r.sourceImportId) {
       const source=next.imports.find(i=>i.id===r.sourceImportId); if (!source) fail('No se encontró la fila de origen.');
-      if (TABLES.filter(t=>t!=='imports').some(t=>next[t].some(other=>!other.voided&&other.id!==r.id&&other.sourceImportId===r.sourceImportId))) fail('La fila de origen ya tiene una imputación. Editá ese registro.');
+      if (TABLES.filter(t=>t!=='imports').some(t=>(next[t] || []).some(other=>!other.voided&&other.id!==r.id&&other.sourceImportId===r.sourceImportId))) fail('La fila de origen ya tiene una imputación. Editá ese registro.');
       delete source.review; if(r.voided) delete source.resolvedId; else source.resolvedId=r.id;
     }
+    TABLES.forEach(t => { if (!next[t]) next[t] = []; });
     const i = next[table].findIndex(x => x.id === r.id); if (i >= 0) next[table][i] = r; else next[table].push(r);
     for (const t of TABLES.filter(t => !['closings','scenarios','imports'].includes(t))) for (const row of active(next[t])) validate(next, t, row);
-    const lastDate = [...TABLES.flatMap(t => next[t].flatMap(x => [x.date,x.weanDate,x.lossDate,x.discardDate]).filter(Boolean)), new Date().toISOString().slice(0,10)].sort().at(-1);
+    const lastDate = [...TABLES.flatMap(t => (next[t] || []).flatMap(x => [x.date,x.weanDate,x.lossDate,x.discardDate]).filter(Boolean)), new Date().toISOString().slice(0,10)].sort().at(-1);
     const state = replay(next, lastDate); if (state.errors.length) fail(state.errors[0].message);
     return next;
   }
@@ -535,22 +547,27 @@
     const row = db[table].find(r => r.id === id); if (!row) fail('Registro inexistente.');
     if (['lots','campaigns','sows','products','parties','accounts','costs','sales','stock','movements'].includes(table)) {
       const keys = { lots:['lotId','toLotId'], campaigns:['campaignId'], sows:['sowId'], products:['productId'], parties:['partyId'], accounts:['accountId','inventoryAccountId'], costs:['costId','sourceId'], sales:['sourceId'], stock:['sourceId'], movements:['sourceId'] }[table];
-      if (TABLES.some(t => db[t].some(r => !r.voided && r.id !== id && (keys.some(k => r[k] === id) || table === 'accounts' && r.lines?.some(l => l.accountId === id))))) fail('Hay registros vinculados. Revisá o anulá primero sus operaciones dependientes.');
+      if (TABLES.some(t => (db[t] || []).some(r => !r.voided && r.id !== id && (keys.some(k => r[k] === id) || table === 'accounts' && r.lines?.some(l => l.accountId === id))))) fail('Hay registros vinculados. Revisá o anulá primero sus operaciones dependientes.');
     }
     return commit(db, table, { ...row, voided: true });
   }
   function needsWorkflowUpgrade(db) {
-    return db.workflowVersion !== 1 || Object.hasOwn(db.settings,'accountPlanApproved') || db.accounts.some(a=>Object.hasOwn(a,'provisional')) || TABLES.some(t=>db[t].some(r=>Object.hasOwn(r,'review')));
+    if (!db) return false;
+    TABLES.forEach(t => { if (!db[t]) db[t] = []; });
+    return db.workflowVersion !== 1 || Object.hasOwn(db.settings || {},'accountPlanApproved') || (db.accounts || []).some(a=>Object.hasOwn(a,'provisional')) || TABLES.some(t=>(db[t] || []).some(r=>Object.hasOwn(r,'review')));
   }
   function upgradeWorkflow(db) {
+    if (!db) return db;
+    TABLES.forEach(t => { if (!db[t]) db[t] = []; });
     if(!needsWorkflowUpgrade(db))return db;
     let next=structuredClone(db);
+    TABLES.forEach(t => { if (!next[t]) next[t] = []; });
     const report={at:new Date().toISOString(),incorporated:[],preserved:[]};
     delete next.settings.accountPlanApproved;
     next.accounts.forEach(a=>{delete a.provisional;if(a.id==='3.1.01'&&a.name==='Contrapartida de apertura (propuesta)')a.name='Contrapartida de apertura';});
     next.imports.forEach(r=>delete r.review);
-    TABLES.forEach(t=>next[t].forEach(r=>{if(!r.review||r.voided)delete r.review;}));
-    let remaining=TABLES.filter(t=>t!=='imports').flatMap(table=>next[table].filter(row=>row.review).map(row=>({table,id:row.id}))),progress;
+    TABLES.forEach(t=>(next[t] || []).forEach(r=>{if(!r.review||r.voided)delete r.review;}));
+    let remaining=TABLES.filter(t=>t!=='imports').flatMap(table=>(next[table] || []).filter(row=>row.review).map(row=>({table,id:row.id}))),progress;
     const failures=new Map();
     // Retry dependent rows after their catalog, opening balance or purchase is incorporated.
     do {

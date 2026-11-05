@@ -16,13 +16,13 @@
   }
   async function workbook(data, Excel) {
     const book = new Excel.Workbook();
-    book.creator = 'Establecimiento Pozo del Carril - UNRC';
+    book.creator = 'Entre Surcos · conectando al agro';
     book.created = new Date(data.issued);
     book.calcProperties.fullCalcOnLoad = true;
     const sheet = book.addWorksheet('Libro diario', {
       views: [{ state: 'frozen', ySplit: 7, showGridLines: false }],
       pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '1:7', margins: { left: .3, right: .3, top: .4, bottom: .4, header: .15, footer: .15 } },
-      headerFooter: { oddFooter: '&LEstablecimiento Pozo del Carril&RPagina &P de &N' }
+      headerFooter: { oddFooter: '&LEntre Surcos · conectando al agro&RPagina &P de &N' }
     });
     const widths = [10, 14, 16, 17, 54, 23, 23];
     widths.forEach((width, index) => sheet.getColumn(index + 1).width = width);
@@ -34,9 +34,9 @@
       sheet.getCell(row, 1).font = { name: 'Calibri', size, bold: row <= 3, color: { argb: 'FF19272D' } };
       sheet.getCell(row, 1).alignment = { vertical: 'middle', wrapText: true };
     };
-    full(1, 'Universidad Nacional de Rio Cuarto', 12);
-    full(2, 'Establecimiento Pozo del Carril', 16);
-    full(3, 'LIBRO DIARIO', 13);
+    full(1, 'Universidad Nacional de Río Cuarto · Facultad de Ciencias Económicas', 11);
+    full(2, 'Entre Surcos · conectando al agro', 16);
+    full(3, 'LIBRO DIARIO · Establecimiento Pozo del Carril', 13);
     full(4, `Periodo: ${data.from.split('-').reverse().join('/')} al ${data.to.split('-').reverse().join('/')} | Moneda: ARS`);
     const warnings = data.errors.length ? 'Hay movimientos con errores. Libro parcial: revisar antes de utilizar.' : '';
     full(5, warnings || 'Operaciones registradas del periodo.');

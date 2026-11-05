@@ -71,10 +71,31 @@ function getDatabase() {
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf8');
     const parsed = JSON.parse(raw);
+    let missingAdded = false;
+    UNRC.TABLES.forEach(t => {
+      if (!parsed[t]) {
+        parsed[t] = [];
+        missingAdded = true;
+      }
+    });
+    if (!parsed.settings) parsed.settings = {};
+    if (!parsed.settings.weatherLocation) {
+      parsed.settings.weatherLocation = {
+        name: 'La Aguada · Pozo del Carril, Córdoba',
+        latitude: -33.125,
+        longitude: -64.350,
+        elevation: 440,
+        timezone: 'America/Argentina/Cordoba'
+      };
+      missingAdded = true;
+    }
     const upgraded = Plan.upgrade(UNRC.upgradeWorkflow(parsed));
     if (!upgraded.revision) upgraded.revision = 1;
     if (!upgraded.auditLog) upgraded.auditLog = [];
     inMemoryDb = upgraded;
+    if (missingAdded) {
+      saveToDisk(upgraded);
+    }
     return inMemoryDb;
   } catch (err) {
     console.error('Error loading database from disk, creating fresh state:', err);
@@ -108,7 +129,7 @@ function checkPermissions(actor, table, record, action = 'commit') {
 
   // Unit responsibles
   if (actor.role === 'responsable_agricultura') {
-    const forbiddenLivestockTables = ['lots', 'sows', 'births', 'treatments', 'movements'];
+    const forbiddenLivestockTables = ['lots', 'sows', 'births', 'treatments', 'movements', 'bovines'];
     if (forbiddenLivestockTables.includes(table)) {
       throw new Error('Acceso denegado: el responsable de Agricultura no puede operar registros de Ganadería.');
     }

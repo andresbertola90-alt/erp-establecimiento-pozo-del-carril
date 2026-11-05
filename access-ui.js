@@ -49,20 +49,19 @@ async function showAccess(mode,choices=[]) {
   
   $('#authRoot').innerHTML=`<section class="access-panel">
     <header class="access-brand">
-      <div class="access-brand-left">
-        <img class="access-field-logo" src="./assets/logo-pozo-del-carril.svg" alt="Establecimiento Pozo del Carril">
-        <div class="access-brand-copy">
-          <div class="brand-title-row">
-            <h1>Establecimiento Pozo del Carril</h1>
-          </div>
+      <div class="access-brand-main">
+        <img class="access-brand-logo" src="./assets/entre-surcos-logo-horizontal.png" alt="Entre Surcos · conectando al agro">
+        <div class="access-brand-divider" aria-hidden="true"></div>
+        <div class="access-institutional-row">
           <span class="access-unrc-sub">Universidad Nacional de Río Cuarto · Facultad de Ciencias Económicas</span>
+          <img class="access-unrc-shield" src="./assets/escudo-unrc.png" alt="Escudo Oficial UNRC" title="Universidad Nacional de Río Cuarto" height="28">
         </div>
       </div>
     </header>
     <div class="access-divider"></div>
 
     <form id="authForm" data-mode="${mode}" class="access-form">
-      <h2>${setup?'Crear Administrador':recover?'Recuperar acceso':'Iniciar sesión'}</h2>
+      <h2>${setup?'Crear Administrador':recover?'Recuperar acceso':'Iniciar Sesión'}</h2>
       <p class="muted">${setup?'Creá la cuenta administradora inicial para el establecimiento.':recover?'Ingresá tu clave de recuperación privada para restablecer el acceso.':'Ingresá tus credenciales autorizadas para acceder al ERP.'}</p>
 
       ${setup?`
@@ -84,7 +83,7 @@ async function showAccess(mode,choices=[]) {
       <p class="access-error" role="alert" hidden></p>
       <button class="btn primary access-submit" type="submit">
         ${icon(setup?'user-plus':recover?'key-round':'log-in')}
-        ${setup?'Crear administrador':recover?'Restablecer contraseña':'Iniciar sesión'}
+        ${setup?'Crear Administrador':recover?'Restablecer Contraseña':'Iniciar Sesión'}
       </button>
 
       ${login?`
@@ -100,7 +99,7 @@ async function showAccess(mode,choices=[]) {
       `:''}
     </form>
     <footer class="access-institutional-footer">
-      <span>Universidad Nacional de Río Cuarto · Establecimiento Pozo del Carril</span>
+      <span>Universidad Nacional de Río Cuarto · Facultad de Ciencias Económicas · Entre Surcos</span>
     </footer>
   </section>`;
   if(setup&&window.UNRCDesktop)$('#authForm .muted').textContent='Cuenta administradora de esta instalación.';
@@ -134,6 +133,9 @@ async function enterSystem() {
   if (typeof UNRCHelpUI !== 'undefined') {
     UNRCHelpUI.checkAutoStartTour();
   }
+  if (typeof handleQuickBna === 'function') {
+    handleQuickBna();
+  }
 }
 function showRecovery(result,next) {
   recoveryData=result;recoveryNext=next;const dialog=$('#accessDialog');if(dialog.open)dialog.close();
@@ -164,7 +166,7 @@ function renderUsers() {
           <option value="auditor" ${person.role === 'auditor' ? 'selected' : ''}>Auditor</option>
         </select>`,
     badge(person.active?'Activo':'Inactivo',person.active?'':'neutral'),
-    person.id===u.id?badge('Tu cuenta','neutral'):`<div class="record-tools"><button class="tool" data-access-action="reset" data-id="${person.id}" title="Restablecer contraseña" aria-label="Restablecer contraseña">${icon('key-round')}</button><button class="tool" data-access-action="active" data-id="${person.id}" data-active="${!person.active}" title="${person.active?'Desactivar':'Activar'} usuario" aria-label="${person.active?'Desactivar':'Activar'} usuario">${icon(person.active?'user-round-x':'user-round-check')}</button></div>`
+    person.id===u.id?badge('Tu cuenta','neutral'):`<div class="record-tools"><button class="tool" data-access-action="reset" data-id="${person.id}" title="Restablecer contraseña" aria-label="Restablecer contraseña">${icon('key-round')}</button>${person.username.toLowerCase()!=='admin'?`<button class="tool text-danger" data-access-action="delete" data-id="${person.id}" data-username="${esc(person.username)}" title="Eliminar usuario permanentemente" aria-label="Eliminar usuario permanentemente" style="color:#dc2626">${icon('trash-2')}</button>`:''}</div>`
   ]),null,null,create)+own;
 }
 document.addEventListener('click',async e=>{
@@ -185,7 +187,27 @@ document.addEventListener('click',async e=>{
     if(action==='close')$('#accessDialog').close();
     if(action==='create'||action==='reset'){await UNRCAuth.requireSession(true);openUserForm(action,el.dataset.id);}
     if(action==='change'){await UNRCAuth.requireSession();openUserForm(action);}
-    if(action==='active'){await UNRCAuth.requireSession(true);const active=el.dataset.active==='true';if(confirm(active?'¿Activar este usuario?':'¿Desactivar este usuario? Sus registros se conservarán.')){await UNRCAuth.setActive(el.dataset.id,active);await refreshUsers();render();}}
+    if(action==='delete'||action==='active'){
+      await UNRCAuth.requireSession(true);
+      const targetId=el.dataset.id;
+      const targetUser=(userDirectory||[]).find(p=>p.id===targetId);
+      const targetName=el.dataset.username||targetUser?.username||targetUser?.name||'este usuario';
+      const ok = typeof confirmAction === 'function'
+        ? await confirmAction({
+            title: '¿Eliminar usuario del sistema?',
+            message: `¿Estás seguro de que deseas eliminar permanentemente al usuario "${targetName}"? Se revocarán todas sus sesiones y credenciales de inmediato.`,
+            confirmLabel: 'Eliminar usuario',
+            cancelLabel: 'Volver sin cambios',
+            danger: true
+          })
+        : true;
+      if(ok){
+        await UNRCAuth.deleteUser(targetId);
+        toast(`Usuario "${targetName}" eliminado correctamente.`,'info');
+        await refreshUsers();
+        render();
+      }
+    }
     if(action==='download-recovery'&&recoveryData)download('UNRC-clave-'+recoveryData.user.username+'.txt','Acceso local UNRC\r\nUsuario: '+recoveryData.user.username+'\r\nClave de recuperación: '+recoveryData.recoveryCode+'\r\nConservar en un lugar privado. Reemplaza cualquier clave de recuperación anterior.','text/plain;charset=utf-8');
   }catch(error){toast(error.message);}finally{accessBusy=false;}
 });

@@ -11,6 +11,7 @@ const sheetsModule = require('./backend/sheets.cjs');
 const alertsModule = require('./backend/alerts.cjs');
 const ratesModule = require('./backend/rates.cjs');
 const backupModule = require('./backend/backup.cjs');
+const weatherModule = require('./backend/weather.cjs');
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -170,6 +171,21 @@ async function handleApiRequest(req, res, pathname) {
       const body = await readBody(req);
       const updated = authModule.updateUser(actor, targetId, body);
       sendJson(res, 200, { user: updated });
+    } catch (err) {
+      sendJson(res, 400, { error: err.message });
+    }
+    return;
+  }
+
+  if (pathname.startsWith('/api/users/') && req.method === 'DELETE') {
+    if (!actor || actor.role !== 'admin') {
+      sendJson(res, 403, { error: 'Acceso denegado: solo administradores pueden eliminar usuarios.' });
+      return;
+    }
+    const targetId = pathname.replace('/api/users/', '');
+    try {
+      const deleted = authModule.deleteUser(actor, targetId);
+      sendJson(res, 200, { success: true, user: deleted });
     } catch (err) {
       sendJson(res, 400, { error: err.message });
     }
@@ -399,7 +415,20 @@ async function handleApiRequest(req, res, pathname) {
     return;
   }
 
-  // 6. Google Sheets Integration
+  // 6. Weather Forecast API
+  if (pathname === '/api/weather/forecast' && req.method === 'GET') {
+    const lat = req.query?.latitude || req.query?.lat || -33.125;
+    const lon = req.query?.longitude || req.query?.lon || -64.350;
+    try {
+      const forecast = await weatherModule.getForecast(lat, lon);
+      sendJson(res, 200, forecast);
+    } catch (err) {
+      sendJson(res, 200, weatherModule.getFallbackForecast(lat, lon));
+    }
+    return;
+  }
+
+  // 7. Google Sheets Integration
   if (pathname === '/api/sheets/status' && req.method === 'GET') {
     if (!actor) {
       sendJson(res, 401, { error: 'Sesión no iniciada.' });
@@ -557,6 +586,7 @@ function createServer() {
     try {
       const requested = new URL(req.url, 'http://localhost');
       pathname = requested.pathname;
+      req.query = Object.fromEntries(requested.searchParams.entries());
     } catch {
       res.writeHead(400);
       res.end();

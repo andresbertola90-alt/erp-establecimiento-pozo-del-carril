@@ -105,10 +105,10 @@ function recordLiveRate(actor, { date, buyRate, sellRate, source }) {
 }
 
 async function fetchLiveBnaRate() {
-  // Strategy 1: DolarApi Oficial (standard tracking of BNA Dólar Billete)
+  // Strategy 1: DolarApi Oficial (BNA Dólar Billete)
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 4000);
     const resp = await fetch('https://dolarapi.com/v1/dolares/oficial', { signal: controller.signal });
     clearTimeout(timeout);
     if (resp.ok) {
@@ -118,6 +118,8 @@ async function fetchLiveBnaRate() {
       if (Number.isFinite(sellRate) && sellRate > 0) {
         return {
           success: true,
+          offline: false,
+          isOutdated: false,
           rate: sellRate,
           sellRate: sellRate,
           buyRate: Number.isFinite(buyRate) ? buyRate : sellRate,
@@ -125,54 +127,19 @@ async function fetchLiveBnaRate() {
           source: 'Banco de la Nación Argentina (BNA) · Dólar Billete Vendedor',
           sourceUrl: 'https://dolarapi.com/v1/dolares/oficial',
           updatedAt: data.fechaActualizacion || new Date().toISOString(),
-          date: (data.fechaActualizacion ? new Date(data.fechaActualizacion) : new Date()).toISOString().slice(0, 10)
+          date: (data.fechaActualizacion ? new Date(data.fechaActualizacion) : new Date()).toISOString().slice(0, 10),
+          statusMessage: 'Cotización oficial obtenida en tiempo real de la fuente externa.'
         };
       }
     }
   } catch (err) {
-    console.warn('[Rates] Fallo consulta DolarApi:', err.message);
+    console.warn('[Rates] Fallo consulta DolarApi Oficial:', err.message);
   }
 
-  // Strategy 2: Direct BNA official website scraping
+  // Strategy 2: Bluelytics Oficial (BNA Dólar Billete)
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-    const resp = await fetch('https://www.bna.com.ar/Personas', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    if (resp.ok) {
-      const html = await resp.text();
-      const m = html.match(/Dolar U\.S\.A<\/td>\s*<td[^>]*>([0-9,\.]+)<\/td>\s*<td[^>]*>([0-9,\.]+)/i);
-      if (m) {
-        const buy = parseFloat(m[1].replace(/\./g, '').replace(',', '.'));
-        const sell = parseFloat(m[2].replace(/\./g, '').replace(',', '.'));
-        if (Number.isFinite(sell) && sell > 0) {
-          return {
-            success: true,
-            rate: sell,
-            sellRate: sell,
-            buyRate: Number.isFinite(buy) ? buy : sell,
-            pair: 'USD/ARS',
-            source: 'Banco de la Nación Argentina (BNA) · Web Oficial',
-            sourceUrl: 'https://www.bna.com.ar/Personas',
-            updatedAt: new Date().toISOString(),
-            date: new Date().toISOString().slice(0, 10)
-          };
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[Rates] Fallo scrape directo BNA:', err.message);
-  }
-
-  // Strategy 3: Bluelytics Oficial fallback
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 4000);
     const resp = await fetch('https://api.bluelytics.com.ar/v2/latest', { signal: controller.signal });
     clearTimeout(timeout);
     if (resp.ok) {
@@ -182,6 +149,8 @@ async function fetchLiveBnaRate() {
       if (Number.isFinite(sellRate) && sellRate > 0) {
         return {
           success: true,
+          offline: false,
+          isOutdated: false,
           rate: sellRate,
           sellRate: sellRate,
           buyRate: Number.isFinite(buyRate) ? buyRate : sellRate,
@@ -189,7 +158,8 @@ async function fetchLiveBnaRate() {
           source: 'Banco de la Nación Argentina (BNA) vía Bluelytics',
           sourceUrl: 'https://api.bluelytics.com.ar/v2/latest',
           updatedAt: data.last_update || new Date().toISOString(),
-          date: new Date().toISOString().slice(0, 10)
+          date: new Date().toISOString().slice(0, 10),
+          statusMessage: 'Cotización oficial obtenida en tiempo real de la fuente externa.'
         };
       }
     }
@@ -197,34 +167,64 @@ async function fetchLiveBnaRate() {
     console.warn('[Rates] Fallo consulta Bluelytics:', err.message);
   }
 
-  // Strategy 4: Latest saved rate from file cache
+  // Strategy 3: Ambito DolarApi (Cotización oficial de respaldo)
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const resp = await fetch('https://dolarapi.com/v1/ambito/dolares/oficial', { signal: controller.signal });
+    clearTimeout(timeout);
+    if (resp.ok) {
+      const data = await resp.json();
+      const sellRate = Number(data.venta);
+      const buyRate = Number(data.compra);
+      if (Number.isFinite(sellRate) && sellRate > 0) {
+        return {
+          success: true,
+          offline: false,
+          isOutdated: false,
+          rate: sellRate,
+          sellRate: sellRate,
+          buyRate: Number.isFinite(buyRate) ? buyRate : sellRate,
+          pair: 'USD/ARS',
+          source: 'Banco de la Nación Argentina (BNA) vía Ámbito',
+          sourceUrl: 'https://dolarapi.com/v1/ambito/dolares/oficial',
+          updatedAt: data.fechaActualizacion || new Date().toISOString(),
+          date: (data.fechaActualizacion ? new Date(data.fechaActualizacion) : new Date()).toISOString().slice(0, 10),
+          statusMessage: 'Cotización oficial obtenida en tiempo real de la fuente externa.'
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[Rates] Fallo consulta Ámbito DolarApi:', err.message);
+  }
+
+  // Strategy 4: Último dato conocido registrado en el historial (marcado expresamente como desactualizado)
   const latest = getLatestRate();
   if (latest && (latest.sellRate || latest.buyRate)) {
     const sRate = Number(latest.sellRate || latest.buyRate);
+    const bRate = Number(latest.buyRate) || sRate;
+    const recordedTime = latest.updatedAt || latest.createdAt || latest.date;
     return {
       success: true,
       rate: sRate,
       sellRate: sRate,
-      buyRate: Number(latest.buyRate) || sRate,
+      buyRate: bRate,
       pair: 'USD/ARS',
-      source: latest.source + ' (Caché local)',
-      updatedAt: latest.createdAt || new Date().toISOString(),
-      date: latest.date,
-      offline: true
+      source: (latest.source || 'Banco de la Nación Argentina') + ' · Último dato conocido',
+      updatedAt: recordedTime,
+      date: latest.date || new Date().toISOString().slice(0, 10),
+      offline: true,
+      isOutdated: true,
+      statusMessage: `La fuente externa no está disponible en este momento. Se muestra el último dato conocido registrado (${latest.date}) como referencia histórica.`
     };
   }
 
-  // Default fallback if initial
+  // Fallback si no hay ninguna cotización registrada previamente
   return {
-    success: true,
-    rate: 1550.00,
-    sellRate: 1550.00,
-    buyRate: 1500.00,
-    pair: 'USD/ARS',
-    source: 'Banco de la Nación Argentina (BNA) · Valor referencial',
-    updatedAt: new Date().toISOString(),
-    date: new Date().toISOString().slice(0, 10),
-    offline: true
+    success: false,
+    offline: true,
+    isOutdated: true,
+    error: 'Servicio de cotización externa no disponible y no se encontraron registros previos de cotización.'
   };
 }
 

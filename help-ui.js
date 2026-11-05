@@ -42,11 +42,12 @@ const UNRCHelpUI = (function () {
       <div class="welcome-card" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
         <div class="welcome-header">
           <div class="welcome-header-logo">
-            <img src="./assets/logo-pozo-del-carril.svg" alt="Pozo del Carril" class="welcome-logo-img">
+            <img src="./assets/entre-surcos-icon.png" alt="Entre Surcos" class="welcome-logo-img">
           </div>
           <div>
-            <span class="welcome-eyebrow">Universidad Nacional de Río Cuarto · FCE</span>
-            <h2 id="welcomeTitle" class="welcome-title">Bienvenido al ERP Establecimiento Pozo del Carril</h2>
+            <span class="welcome-eyebrow">Universidad Nacional de Río Cuarto · Facultad de Ciencias Económicas</span>
+            <h2 id="welcomeTitle" class="welcome-title">Bienvenido a Entre Surcos</h2>
+            <p style="margin:2px 0 0; color:#86efac; font-style:italic; font-weight:700; font-size:0.86rem">conectando al agro</p>
           </div>
         </div>
 
@@ -414,11 +415,11 @@ const UNRCHelpUI = (function () {
         <!-- SECCIÓN A: INTRODUCCIÓN AL ERP -->
         <article class="surface help-section">
           <div class="surface-title">
-            <h4><i data-lucide="landmark"></i> A. Introducción al ERP Establecimiento Pozo del Carril</h4>
+            <h4><i data-lucide="landmark"></i> A. Introducción al ERP Entre Surcos</h4>
           </div>
           <div class="help-section-content">
             <p>
-              El <strong>ERP Agropecuario Establecimiento Pozo del Carril</strong> es una solución de gestión integral desarrollada en el marco de la asignatura <strong>Taller de Práctica II</strong> de la carrera de <strong>Contador Público</strong> en la <strong>Facultad de Ciencias Económicas de la Universidad Nacional de Río Cuarto (UNRC)</strong>.
+              El <strong>ERP Agropecuario Entre Surcos · conectando al agro</strong> es una solución de gestión integral desarrollada en el marco de la asignatura <strong>Taller de Práctica II</strong> de la carrera de <strong>Contador Público</strong> en la <strong>Facultad de Ciencias Económicas de la Universidad Nacional de Río Cuarto (UNRC)</strong>.
             </p>
             <p>
               Su objetivo primordial es articular la administración económica, comercial y contable con las cinco unidades operativas del campo experimental: <strong>Maíz</strong> y <strong>Soja</strong> (sector agrícola) junto a <strong>Porcinos</strong>, <strong>Bovinos</strong> y <strong>Ovinos</strong> (sector ganadero). A través de este sistema, cada transacción física o biológica genera automáticamente su imputación por partida doble en el Libro Diario General, facilitando el control de gestión, el cálculo de costos unitarios y la trazabilidad de resultados.
@@ -487,7 +488,7 @@ const UNRCHelpUI = (function () {
           </div>
           <div class="help-section-content" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px">
             <div>
-              <p style="margin:0 0 4px">¿Deseás repasar la guía paso a paso por los 7 módulos del ERP Establecimiento Pozo del Carril?</p>
+              <p style="margin:0 0 4px">¿Deseás repasar la guía paso a paso por los 7 módulos del ERP Entre Surcos?</p>
               <small style="color:#64748b">Esta acción no modifica tus datos registrados ni altera la configuración de tu cuenta.</small>
             </div>
             <button type="button" class="btn primary" id="btnRestartTourBottom">
@@ -499,12 +500,18 @@ const UNRCHelpUI = (function () {
         <!-- SECCIÓN E: INFORMACIÓN INSTITUCIONAL -->
         <footer class="surface help-institutional-card">
           <div class="inst-logo-row">
-            <img src="./assets/logo-pozo-del-carril.svg" alt="Pozo del Carril" class="inst-logo-field">
+            <img src="./assets/entre-surcos-logo-horizontal.png" alt="Entre Surcos · conectando al agro" class="inst-logo-field" style="max-width:160px;height:auto">
           </div>
           <div class="inst-details">
-            <h4>ERP Agropecuario — Establecimiento Pozo del Carril</h4>
-            <p><strong>Universidad Nacional de Río Cuarto</strong> · Facultad de Ciencias Económicas</p>
-            <p>Asignatura: <strong>Taller de Práctica II</strong> · Ciclo Lectivo 2026</p>
+            <div style="display:flex;align-items:center;gap:10px">
+              <h4 style="margin:0">ERP Agropecuario — Entre Surcos</h4>
+              <span style="font-size:0.82rem;color:#62A544;font-weight:700;font-style:italic">conectando al agro</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+              <p style="margin:0"><strong>Universidad Nacional de Río Cuarto</strong> · Facultad de Ciencias Económicas</p>
+              <img src="./assets/escudo-unrc.png" alt="Escudo UNRC" height="22" style="vertical-align:middle">
+            </div>
+            <p>Asignatura: <strong>Taller de Práctica II</strong> · Ciclo Lectivo 2026 · Establecimiento Pozo del Carril</p>
             <p class="inst-sub">Diseñado para la gestión integrada de agricultura (maíz/soja), porcinos, bovinos, ovinos, comercialización y contabilidad patrimonial.</p>
           </div>
         </footer>

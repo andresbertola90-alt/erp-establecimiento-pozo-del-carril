@@ -10,7 +10,8 @@
     "start": "node server.cjs",
     "dev": "node server.cjs",
     "build": "node -e 'process.exit(0)'",
-    "test": "node --test tests/domain.test.cjs tests/transfer.test.cjs tests/desktop-policy.test.cjs tests/journal-audit.test.cjs tests/workflow.test.cjs tests/account-plan.test.cjs tests/preview-server.test.cjs tests/backend.test.cjs tests/demo-data.test.cjs tests/csv-engine.test.cjs tests/units-engine.test.cjs tests/semaphore-engine.test.cjs tests/help-system.test.cjs tests/google-sheets.test.cjs tests/roles-permissions.test.cjs"
+    "lint": "node -c *.js *.cjs backend/*.cjs desktop/*.cjs",
+    "test": "node --test tests/domain.test.cjs tests/transfer.test.cjs tests/desktop-policy.test.cjs tests/journal-audit.test.cjs tests/workflow.test.cjs tests/account-plan.test.cjs tests/preview-server.test.cjs tests/backend.test.cjs tests/demo-data.test.cjs tests/csv-engine.test.cjs tests/units-engine.test.cjs tests/semaphore-engine.test.cjs tests/help-system.test.cjs tests/google-sheets.test.cjs tests/roles-permissions.test.cjs tests/kpi-evolution.test.cjs tests/weather-module.test.cjs tests/demo-unrc-weather-fix.test.cjs tests/bovines-caravan.test.cjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

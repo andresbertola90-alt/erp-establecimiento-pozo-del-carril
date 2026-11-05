@@ -141,6 +141,14 @@
     return result.user;
   }
 
+  async function deleteUser(id) {
+    await requireSession(true);
+    const result = await apiFetch(`/api/users/${id}`, {
+      method: 'DELETE'
+    });
+    return result.user;
+  }
+
   async function switchableUsers() {
     try {
       const users = await listUsers();
@@ -193,6 +201,7 @@
     switchableUsers,
     setActive,
     updateRole,
+    deleteUser,
     changePassword,
     resetPassword,
     recover,

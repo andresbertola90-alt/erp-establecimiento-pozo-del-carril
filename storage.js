@@ -6,11 +6,34 @@
   let lastSynced = false;
   const request = r => new Promise((resolve, reject) => { r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); });
   const finished = tx => new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error || new Error('No se guardaron los cambios.')); });
+  const TARGET_DB_VERSION = 3;
   async function open() {
-    if (connection) return connection;
-    const r = indexedDB.open('unrc-gestion-integrada', 1);
-    r.onupgradeneeded = () => { for (const t of [...UNRC.TABLES, 'meta']) r.result.createObjectStore(t, { keyPath: 'id' }); };
-    connection = await request(r); return connection;
+    if (connection) {
+      const allExist = [...UNRC.TABLES, 'meta'].every(t => connection.objectStoreNames.contains(t));
+      if (allExist) return connection;
+      try { connection.close(); } catch {}
+      connection = null;
+    }
+    const checkReq = indexedDB.open('unrc-gestion-integrada');
+    const existingDb = await request(checkReq);
+    const missing = [...UNRC.TABLES, 'meta'].filter(t => !existingDb.objectStoreNames.contains(t));
+    if (missing.length === 0) {
+      connection = existingDb;
+      return connection;
+    }
+    const nextVer = Math.max(TARGET_DB_VERSION, (existingDb.version || 1) + 1);
+    try { existingDb.close(); } catch {}
+    const upgradeReq = indexedDB.open('unrc-gestion-integrada', nextVer);
+    upgradeReq.onupgradeneeded = () => {
+      const db = upgradeReq.result;
+      for (const t of [...UNRC.TABLES, 'meta']) {
+        if (!db.objectStoreNames.contains(t)) {
+          db.createObjectStore(t, { keyPath: 'id' });
+        }
+      }
+    };
+    connection = await request(upgradeReq);
+    return connection;
   }
 
   async function fetchServerData() {
@@ -74,8 +97,9 @@
       if (raw) { try { old = JSON.parse(raw); } catch { throw new Error('La base anterior no se pudo leer. Se conservó intacta; no se reemplazó por datos de ejemplo.'); } }
       const data = Plan.upgrade(UNRC.upgradeWorkflow(UNRC.migrate(old))); if (!await save(data, true)) return load(); return data;
     }
-    const data = { ...meta }; delete data.id; UNRC.TABLES.forEach((t, i) => data[t] = items[i]);
-    const missing = UNRC.initial().accounts.filter(a => !data.accounts.some(saved => saved.id === a.id));
+    const data = { ...meta }; delete data.id; UNRC.TABLES.forEach((t, i) => data[t] = items[i] || []);
+    data.accounts = data.accounts || [];
+    const missing = UNRC.initial().accounts.filter(a => !(data.accounts || []).some(saved => saved.id === a.id));
     if (missing.length) data.accounts.push(...missing);
     const upgrade=UNRC.needsWorkflowUpgrade(data),planUpgrade=Plan.needsUpgrade(data),next=Plan.upgrade(UNRC.upgradeWorkflow(data));
     if (missing.length || data.version < 4 || upgrade || planUpgrade) { next.version=4; await save(next,false,[upgrade?'workflow':'',planUpgrade?'account-plan':''].filter(Boolean).join('+')); }
@@ -122,6 +146,29 @@
       // If network is offline, continue saving to local IndexedDB
     }
 
+    if (serverSynced) {
+      try {
+        const db = await open();
+        const tx = db.transaction([...UNRC.TABLES, 'meta'], 'readwrite');
+        const done = finished(tx);
+        for (const t of UNRC.TABLES) {
+          const store = tx.objectStore(t);
+          store.clear();
+          (data[t] || []).forEach(r => store.put(r));
+        }
+        const meta = Object.fromEntries(Object.entries(data).filter(([k]) => !UNRC.TABLES.includes(k)));
+        meta.id = 'state';
+        meta.revision = data.revision;
+        meta.auditLog = data.auditLog || [];
+        tx.objectStore('meta').put(meta);
+        await done;
+      } catch (cacheErr) {
+        console.warn('Cache local IndexedDB no actualizado:', cacheErr);
+      }
+      lastSynced = true;
+      return { success: true, serverSynced: true, revision: data.revision };
+    }
+
     const db = await open(); const tx = db.transaction([...UNRC.TABLES, 'meta'], 'readwrite'); const done = finished(tx);
     const metaStore = tx.objectStore('meta'); const old = await request(metaStore.get('state'));
     if (first && old && !serverSynced) { tx.abort(); await done.catch(() => {}); return false; }
@@ -131,7 +178,7 @@
     if(context==='import'&&!UNRCTransfer.isEmpty(before)&&!serverSynced){tx.abort();await done.catch(()=>{});throw new Error('El destino ya tiene datos. No se reemplazó nada.');}
     const meta = Object.fromEntries(Object.entries(data).filter(([k]) => !UNRC.TABLES.includes(k)));
     meta.id = 'state';
-    meta.revision = serverSynced ? data.revision : ((old?.revision || 0) + 1);
+    meta.revision = (old?.revision || 0) + 1;
     const migrations=[];
     if(context.includes('workflow'))migrations.push(UNRCAudit.event(actor,'actualizar','system','','Actualización automática: registro directo de operaciones',null,data.workflowMigration));
     if(context.includes('account-plan'))migrations.push(UNRCAudit.event(actor,'actualizar','accounts','','Plan de cuentas de anexos unidos.pdf; originales conservados',null,{version:data.accountPlanVersion,added:data.accountPlanMigration.added}));
@@ -139,17 +186,12 @@
     const previous = old?.auditLog || [];
     const ids = new Set(previous.map(event=>event.id));
     const imported = context==='import' ? (data.auditLog||[]).filter(event=>!ids.has(event.id)).map(event=>({...event,importedAt:new Date().toISOString()})) : [];
-    if (!serverSynced) {
-      meta.auditLog = [...previous,...imported,...newEvents.map(event=>({...event,revision:meta.revision}))];
-    } else {
-      meta.auditLog = data.auditLog || previous;
-    }
-    for (const t of UNRC.TABLES) { const store = tx.objectStore(t); store.clear(); data[t].forEach(r => store.put(r)); }
+    meta.auditLog = [...previous,...imported,...newEvents.map(event=>({...event,revision:meta.revision}))];
+    for (const t of UNRC.TABLES) { const store = tx.objectStore(t); store.clear(); (data[t] || []).forEach(r => store.put(r)); }
     metaStore.put(meta); await done;
     data.revision = meta.revision;
     data.auditLog = meta.auditLog;
-    if (serverSynced) lastSynced = true;
-    return { success: true, serverSynced, revision: data.revision };
+    return { success: true, serverSynced: false, revision: data.revision };
   }
   async function importNew(data, expectedRevision) {
     const actor = await UNRCAuth.requireSession(true);

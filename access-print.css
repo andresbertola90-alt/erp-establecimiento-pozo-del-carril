@@ -10,18 +10,82 @@
   -webkit-backdrop-filter: blur(12px);
   overflow: hidden;
 }
-.access-brand { display:flex; gap:16px; align-items:center; padding:24px 28px; border-bottom:3.5px solid #14263D; background:#ffffff; }
-.access-brand img { width:58px; height:58px; object-fit:contain; flex-shrink:0; }
-.access-brand h1 { margin:0; font-size:1.42rem; font-weight:850; color:#14263D; line-height:1.25; }
-.access-brand span { font-size:0.85rem; font-weight:650; color:#64748B; }
+.access-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 28px 32px 22px;
+  border-bottom: 3.5px solid #123F32;
+  background: #ffffff;
+}
+.access-brand-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+}
+.access-brand-logo {
+  height: 82px;
+  max-width: 340px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+  transition: transform 0.2s ease;
+}
+.access-brand-divider {
+  display: none;
+}
+.access-institutional-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #E2E8F0;
+  width: 100%;
+}
+.access-unrc-sub {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.35;
+  text-align: center;
+}
+.access-unrc-shield {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .access-brand {
+    padding: 20px 18px 16px;
+  }
+  .access-brand-logo {
+    height: 68px;
+    max-width: 280px;
+  }
+  .access-unrc-sub {
+    font-size: 0.78rem;
+  }
+  .access-unrc-shield {
+    height: 26px;
+  }
+}
 .access-form { display:grid; gap:18px; padding:28px 32px; }
-.access-form h2,.access-form h3 { margin:0 0 8px; font-size:1.45rem; font-weight:850; color:#14263D; }
+.access-form h2,.access-form h3 { margin:0 0 8px; font-size:1.45rem; font-weight:850; color:#123F32; }
 .access-form p { margin:0; line-height:1.55; color:#64748B; font-size:0.96rem; font-weight:550; }
 .access-form .field { min-width:0; }
-.access-form .field > label { font-size:0.98rem; font-weight:800; color:#14263D; margin-bottom:8px; display:block; }
-.access-form input, .access-form select { min-height:48px; font-size:1.05rem; font-weight:550; color:#14263D; border:1.5px solid #CBD5E1; border-radius:8px; padding:10px 14px; width:100%; box-sizing:border-box; }
+.access-form .field > label { font-size:0.98rem; font-weight:800; color:#252D2B; margin-bottom:8px; display:block; }
+.access-form input, .access-form select { min-height:48px; font-size:1.05rem; font-weight:550; color:#252D2B; border:1.5px solid #CBD5E1; border-radius:8px; padding:10px 14px; width:100%; box-sizing:border-box; }
 .access-panel footer { padding:16px 24px; font-size:0.88rem; font-weight:700; border-top:1.5px solid #E2E8F0; color:#64748B; background:#F8FAFC; text-align:center; }
-.access-submit { width:100%; min-height:52px; font-size:1.12rem !important; font-weight:850 !important; background:#087FBD !important; color:#ffffff !important; border-radius:8px; box-shadow:0 4px 16px rgba(8, 127, 189, 0.35); justify-content:center; }
+.access-submit { width:100%; min-height:52px; font-size:1.12rem !important; font-weight:850 !important; background:#123F32 !important; color:#ffffff !important; border-radius:8px; box-shadow:0 4px 16px rgba(18, 63, 50, 0.35); justify-content:center; }
+.access-submit:hover { background:#0d2f25 !important; }
 .password-control { position:relative; }
 .password-control input { padding-right:46px; width:100%; }
 .password-control .tool { position:absolute; top:50%; right:7px; transform:translateY(-50%); border:0; color:#64748B; }

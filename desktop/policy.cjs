@@ -29,7 +29,11 @@ const ALLOWED_ASSETS = new Set([
   'units-engine.js',
   'semaphore-engine.js',
   'help-engine.js',
-  'help-ui.js'
+  'help-ui.js',
+  'brand.js',
+  'kpi-evolution.js',
+  'weather-engine.js',
+  'bovines-engine.js'
 ]);
 
 function isEntry(url) {

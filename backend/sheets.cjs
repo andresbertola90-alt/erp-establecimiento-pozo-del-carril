@@ -6,7 +6,7 @@ const ExcelJS = require('exceljs');
 
 const CONFIG_FILE = path.join(__dirname, '..', 'data', 'sheets-config.json');
 const FIREBASE_CONFIG_FILE = path.join(__dirname, '..', 'firebase-applet-config.json');
-const SPREADSHEET_TITLE = 'UNRC - Establecimiento Pozo del Carril - Base de Datos ERP';
+const SPREADSHEET_TITLE = 'Entre Surcos · Conectando al Agro - Base de Datos ERP';
 
 function ensureDataDir() {
   const dir = path.dirname(CONFIG_FILE);
@@ -108,7 +108,7 @@ function normalizeTables(db) {
     ['Establecimiento', 'Establecimiento Pozo del Carril', '200 ha mixtas', 'Universidad Nacional de Río Cuarto (UNRC) · FCE'],
     ['Asignatura / Carrera', 'Taller de Práctica II', 'Contador Público Nacional', 'Ciclo Lectivo 2026'],
     ['Planilla de Base de Datos', SPREADSHEET_TITLE, 'Google Sheets v4', 'Sincronización Unidireccional ERP -> Google Sheets'],
-    ['Fecha de Sincronización', nowStr, 'Hora Oficial Argentina', 'Fuente de Verdad: ERP Establecimiento Pozo del Carril'],
+    ['Fecha de Sincronización', nowStr, 'Hora Oficial Argentina', 'Fuente de Verdad: ERP Entre Surcos · conectando al agro'],
     ['Superficie Agrícola', `${totalAgriHa} ha`, '50 ha Maíz + 50 ha Soja', 'Rotación Agrícola y Grano para Consumo Interno'],
     ['Campañas Agrícolas Registradas', totalCampaigns, 'campañas', 'Costos directos, labores, fertilización y rinde'],
     ['Lotes Ganaderos Activos', totalLots, 'lotes', 'Porcinos (Semi-Intensivo), Bovinos Feedlot, Ovinos Dorper'],
@@ -291,7 +291,7 @@ function normalizeTables(db) {
 // Builds multi-tab Excel workbook with all normalized tables
 async function generateExcelWorkbook(db) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Establecimiento Pozo del Carril - UNRC';
+  workbook.creator = 'Entre Surcos · conectando al agro';
   workbook.created = new Date();
 
   const tables = normalizeTables(db);

@@ -3,10 +3,12 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Establecimiento Pozo del Carril - UNRC</title>
-    <meta name="description" content="Sistema de gestión contable, agrícola y porcina del Establecimiento Pozo del Carril de la Universidad Nacional de Río Cuarto (UNRC).">
-    <meta property="og:title" content="Establecimiento Pozo del Carril - UNRC">
-    <meta property="og:description" content="Sistema de gestión contable, agrícola y porcina del Establecimiento Pozo del Carril de la Universidad Nacional de Río Cuarto (UNRC).">
+    <title>Entre Surcos · conectando al agro</title>
+    <meta name="description" content="Entre Surcos - Sistema ERP de gestión agropecuaria integral. Conectando al agro. Universidad Nacional de Río Cuarto · Facultad de Ciencias Económicas.">
+    <meta property="og:title" content="Entre Surcos · conectando al agro">
+    <meta property="og:description" content="Entre Surcos - Sistema ERP de gestión agropecuaria integral. Conectando al agro. Universidad Nacional de Río Cuarto · Facultad de Ciencias Económicas.">
+    <link rel="icon" type="image/png" href="./assets/entre-surcos-icon.png">
+    <link rel="apple-touch-icon" href="./assets/entre-surcos-icon.png">
     <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="./integrated.css">
     <link rel="stylesheet" href="./access-print.css">
@@ -20,25 +22,24 @@
         <header class="app-topbar" id="topHeader">
           <div class="topbar-brand">
             <div class="brand-logos">
-              <img class="logo-field" src="./assets/logo-pozo-del-carril.svg" alt="Establecimiento Pozo del Carril">
+              <img class="brand-logo-main" src="./assets/entre-surcos-logo-header.png" alt="Entre Surcos · conectando al agro">
             </div>
-            <div class="brand-text">
-              <div class="brand-title-row">
-                <span class="brand-name">Establecimiento Pozo del Carril</span>
-              </div>
-              <span class="brand-sub">Universidad Nacional de Río Cuarto · FCE</span>
+            <div class="brand-institutional-center">
+              <span class="brand-sub">Universidad Nacional de Río Cuarto · Facultad de Ciencias Económicas</span>
+              <img class="logo-unrc-shield" src="./assets/escudo-unrc.png" alt="Escudo Oficial UNRC" title="Universidad Nacional de Río Cuarto">
             </div>
           </div>
 
           <div class="topbar-center">
-            <div class="currency-widget" id="currencyWidget">
+            <div class="currency-widget" id="currencyWidget" data-action="open-rate-modal" title="Click para ver detalle oficial BNA, estado y fecha de cotización" style="cursor:pointer">
               <span class="widget-label">Cotización BNA:</span>
-              <div class="currency-toggle" role="group" aria-label="Moneda activa">
-                <button type="button" class="currency-btn active" data-currency="USD" id="btnCurrUSD">USD</button>
-                <button type="button" class="currency-btn" data-currency="ARS" id="btnCurrARS">ARS</button>
+              <div class="currency-toggle" role="group" aria-label="Moneda activa" onclick="event.stopPropagation()">
+                <button type="button" class="currency-btn active" data-currency="USD" id="btnCurrUSD" onclick="window.switchCurrency && window.switchCurrency('USD', event)">USD</button>
+                <button type="button" class="currency-btn" data-currency="ARS" id="btnCurrARS" onclick="window.switchCurrency && window.switchCurrency('ARS', event)">ARS</button>
               </div>
               <span class="bna-rate" id="bnaRateDisplay" title="Tipo de cambio oficial Banco Nación (Dólar Vendedor Billete)">$ 1.550,00</span>
-              <button type="button" class="tool-btn-sm" data-action="quick-bna" title="Actualizar cotización BNA en vivo (Dólar Vendedor Billete)" aria-label="Actualizar cotización BNA en vivo">
+              <span class="bna-status-tag live" id="bnaStatusTag" title="Cotización oficial obtenida en tiempo real">● En vivo</span>
+              <button type="button" class="tool-btn-sm" data-action="quick-bna" title="Actualizar cotización BNA en vivo (Dólar Vendedor Billete)" aria-label="Actualizar cotización BNA en vivo" onclick="event.stopPropagation()">
                 <i data-lucide="refresh-cw" aria-hidden="true"></i>
               </button>
             </div>
@@ -52,7 +53,7 @@
           <div class="topbar-actions">
             <div class="quick-actions-bar">
               <button type="button" class="btn-quick quick-green" data-action="quick-lote" title="Registrar nuevo lote productivo">
-                <i data-lucide="plus" aria-hidden="true"></i>+ Lote
+                <i data-lucide="layers" aria-hidden="true"></i> Lote
               </button>
               <button type="button" class="btn-quick quick-cyan" data-action="quick-venta" title="Registrar venta de hacienda o cereal">
                 <i data-lucide="handshake" aria-hidden="true"></i>+ Venta
@@ -84,7 +85,7 @@
         <main class="content" id="viewRoot" tabindex="-1"><p role="status">Abriendo el establecimiento...</p></main>
 
         <footer class="app-credit">
-          <strong>Establecimiento Pozo del Carril</strong> · Sistema de Gestión Contable, Agrícola y Porcina · Taller de Práctica II · Carrera de Contador Público · Facultad de Ciencias Económicas · UNRC · Ciclo Lectivo 2026 · Grupo 5: Bertola Andrés, Fernández Matías, Mana Pilar, Priotti Grecia, Rosso Sofía
+          <strong>Entre Surcos</strong> · <em>conectando al agro</em> · Sistema de Gestión Contable, Agrícola y Ganadera · Universidad Nacional de Río Cuarto · Facultad de Ciencias Económicas · Establecimiento Pozo del Carril · Ciclo Lectivo 2026 · Grupo 5: Bertola Andrés, Fernández Matías, Mana Pilar, Priotti Grecia, Rosso Sofía
         </footer>
       </div>
     </div>
@@ -120,6 +121,11 @@
     <dialog id="rateDialog" class="record-dialog rate-dialog" aria-label="Cotización BNA"></dialog>
     <dialog id="csvWizardDialog" class="record-dialog" aria-label="Asistente de Importación CSV" style="padding:0; border:none; border-radius:10px; background:transparent"></dialog>
     <dialog id="welcomeTourDialog" class="record-dialog welcome-tour-dialog" aria-label="Bienvenido al ERP"></dialog>
+    <dialog id="weatherLocationDialog" class="record-dialog" aria-label="Configuración de ubicación meteorológica"></dialog>
+    <dialog id="rainfallDialog" class="record-dialog" aria-label="Registro pluviométrico"></dialog>
+    <dialog id="bovineDialog" class="record-dialog" aria-label="Ficha de bovino"></dialog>
+    <dialog id="bovineEventDialog" class="record-dialog" aria-label="Evento bovino"></dialog>
+    <dialog id="bovineBulkDialog" class="record-dialog" aria-label="Acciones grupales bovinas"></dialog>
     <div id="printRoot"></div>
 
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -127,6 +133,7 @@
     <script src="./assets/papaparse.min.js"></script>
     <script src="./assets/exceljs.min.js"></script>
     <script src="./assets/account-plan.js"></script>
+    <script src="./brand.js"></script>
     <script src="./domain.js"></script>
     <script src="./csv-engine.js"></script>
     <script src="./demo-data.js"></script>
@@ -138,6 +145,9 @@
     <script src="./csv-ui.js"></script>
     <script src="./units-engine.js"></script>
     <script src="./semaphore-engine.js"></script>
+    <script src="./kpi-evolution.js"></script>
+    <script src="./weather-engine.js"></script>
+    <script src="./bovines-engine.js"></script>
     <script src="./help-engine.js"></script>
     <script src="./help-ui.js"></script>
     <script src="./interface.js"></script>

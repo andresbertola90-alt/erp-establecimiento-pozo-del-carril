@@ -14,6 +14,8 @@ test('Backend: authentication, sessions, role authorization, concurrency, and sh
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = 'http://127.0.0.1:' + server.address().port;
 
+  let agriData, cerdosData, auditorData, adminHeaders;
+
   try {
     // 1. Invalid login fails
     const badLogin = await fetch(`${base}/api/auth/login`, {
@@ -34,7 +36,7 @@ test('Backend: authentication, sessions, role authorization, concurrency, and sh
     assert.ok(adminData.token);
     assert.equal(adminData.user.role, 'admin');
 
-    const adminHeaders = {
+    adminHeaders = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${adminData.token}`
     };
@@ -57,6 +59,7 @@ test('Backend: authentication, sessions, role authorization, concurrency, and sh
       })
     });
     assert.equal(resAgri.status, 201);
+    agriData = await resAgri.json();
 
     // 3b. Responsable cerdos
     const resCerdos = await fetch(`${base}/api/users`, {
@@ -70,6 +73,7 @@ test('Backend: authentication, sessions, role authorization, concurrency, and sh
       })
     });
     assert.equal(resCerdos.status, 201);
+    cerdosData = await resCerdos.json();
 
     // 3c. Auditor
     const resAuditor = await fetch(`${base}/api/users`, {
@@ -83,6 +87,7 @@ test('Backend: authentication, sessions, role authorization, concurrency, and sh
       })
     });
     assert.equal(resAuditor.status, 201);
+    auditorData = await resAuditor.json();
 
     // 4. Log in as Responsable Agricultura
     const agriLogin = await fetch(`${base}/api/auth/login`, {
@@ -300,8 +305,27 @@ test('Backend: authentication, sessions, role authorization, concurrency, and sh
     assert.match((await auditorSync.json()).error, /solo lectura/);
 
   } finally {
+    if (agriData?.user?.id) await fetch(`${base}/api/users/${agriData.user.id}`, { method: 'DELETE', headers: adminHeaders }).catch(() => {});
+    if (cerdosData?.user?.id) await fetch(`${base}/api/users/${cerdosData.user.id}`, { method: 'DELETE', headers: adminHeaders }).catch(() => {});
+    if (auditorData?.user?.id) await fetch(`${base}/api/users/${auditorData.user.id}`, { method: 'DELETE', headers: adminHeaders }).catch(() => {});
     await new Promise(resolve => server.close(resolve));
     try { fs.unlinkSync(testDbPath); } catch {}
     try { fs.unlinkSync(testIdempPath); } catch {}
+  }
+});
+
+test('Exchange Rates: fetchLiveBnaRate returns valid external rate or historical known rate with clear status', async () => {
+  const ratesModule = require('../backend/rates.cjs');
+  const res = await ratesModule.fetchLiveBnaRate();
+  assert.ok(res.success, 'Rate fetch must return success');
+  assert.ok(typeof res.sellRate === 'number' && res.sellRate > 0, 'sellRate must be a positive number');
+  assert.ok(typeof res.buyRate === 'number' && res.buyRate > 0, 'buyRate must be a positive number');
+  assert.ok(res.source, 'source must be identified');
+  assert.ok(res.updatedAt, 'updatedAt must be provided');
+  assert.ok(typeof res.isOutdated === 'boolean', 'isOutdated flag must be boolean');
+  if (res.isOutdated) {
+    assert.match(res.statusMessage, /último dato conocido|no disponible/i, 'Outdated rate must contain descriptive message');
+  } else {
+    assert.match(res.statusMessage, /tiempo real|oficial/i, 'Live rate must indicate real-time connection');
   }
 });

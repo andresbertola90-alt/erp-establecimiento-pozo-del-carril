@@ -22,23 +22,23 @@ test('MODIFICACIÓN 13: 1. Declaración de los 5 roles institucionales', () => {
 });
 
 test('MODIFICACIÓN 13: 2. Autenticación de cuentas sembradas para los 5 roles', () => {
-  const adminRes = authModule.authenticate('admin', 'AdminPozo2026!*');
+  const adminRes = authModule.authenticate('Admin', 'AdminPozo2026!*');
   assert.ok(adminRes.success, 'Login admin exitoso');
   assert.equal(adminRes.user.role, 'admin');
 
-  const agriRes = authModule.authenticate('agricultura', 'AgriculturaUNRC2026!');
+  const agriRes = authModule.authenticate('SusanaMussolini1', 'AgriculturaUNRC2026!');
   assert.ok(agriRes.success, 'Login agricultura exitoso');
   assert.equal(agriRes.user.role, 'responsable_agricultura');
 
-  const ganRes = authModule.authenticate('ganaderia', 'GanaderiaUNRC2026!');
+  const ganRes = authModule.authenticate('JuanGallardo', 'GanaderiaUNRC2026!');
   assert.ok(ganRes.success, 'Login ganadería exitoso');
   assert.equal(ganRes.user.role, 'responsable_ganaderia');
 
-  const analistaRes = authModule.authenticate('analista', 'AnalistaUNRC2026!');
+  const analistaRes = authModule.authenticate('LuisGabriel', 'AnalistaUNRC2026!');
   assert.ok(analistaRes.success, 'Login analista exitoso');
   assert.equal(analistaRes.user.role, 'analista');
 
-  const auditorRes = authModule.authenticate('auditor', 'AuditorUNRC2026!');
+  const auditorRes = authModule.authenticate('VirginiaCassano', 'AuditorUNRC2026!');
   assert.ok(auditorRes.success, 'Login auditor exitoso');
   assert.equal(auditorRes.user.role, 'auditor');
 });
@@ -190,7 +190,7 @@ test('MODIFICACIÓN 13: 5. Filtro de visibilidad y protección de auditoría (fi
 test('MODIFICACIÓN 13: 6. Gestión de usuarios, protección de rol propio y último admin', () => {
   const adminActor = { id: 'admin-id-1', username: 'admin', role: 'admin' };
   const users = authModule.loadUsers();
-  const adminUser = users.find(u => u.username === 'admin');
+  const adminUser = users.find(u => u.username.toLowerCase() === 'admin');
   assert.ok(adminUser, 'Usuario admin existe');
 
   // Impedir que un usuario modifique su propio rol
@@ -218,4 +218,55 @@ test('MODIFICACIÓN 13: 6. Gestión de usuarios, protección de rol propio y úl
     role: 'responsable_agricultura'
   });
   assert.equal(updated.role, 'responsable_agricultura', 'Admin pudo cambiar rol de otro usuario');
+
+  // Limpiar usuario de prueba
+  authModule.deleteUser(adminActor, created.user.id);
+});
+
+test('MODIFICACIÓN 13: 7. Eliminación de usuarios (deleteUser), restricciones y seguridad', () => {
+  const adminActor = { id: 'admin-id-1', username: 'admin', role: 'admin' };
+  const analistaActor = { id: 'u-analista', username: 'LuisGabriel', role: 'analista' };
+
+  // Crear un usuario temporal para eliminar
+  const tempUser = authModule.createUser(adminActor, {
+    username: 'usuariotemp' + Date.now().toString().slice(-4),
+    name: 'Usuario Temporal Eliminable',
+    password: 'PasswordSegura2026!*',
+    role: 'analista'
+  });
+
+  // Usuario no admin no puede eliminar usuarios
+  assert.throws(
+    () => {
+      authModule.deleteUser(analistaActor, tempUser.user.id);
+    },
+    /Solo un administrador puede eliminar usuarios/
+  );
+
+  // Admin no puede eliminarse a sí mismo
+  assert.throws(
+    () => {
+      authModule.deleteUser({ id: tempUser.user.id, username: tempUser.user.username, role: 'admin' }, tempUser.user.id);
+    },
+    /No podés eliminar tu propia cuenta en uso/
+  );
+
+  // Admin no puede eliminar al usuario admin principal
+  const users = authModule.loadUsers();
+  const mainAdmin = users.find(u => u.username.toLowerCase() === 'admin');
+  assert.ok(mainAdmin, 'Usuario admin principal existe');
+  assert.throws(
+    () => {
+      authModule.deleteUser(adminActor, mainAdmin.id);
+    },
+    /No se puede eliminar la cuenta de administrador principal/
+  );
+
+  // Admin elimina correctamente al usuario temporal
+  const deleted = authModule.deleteUser(adminActor, tempUser.user.id);
+  assert.equal(deleted.id, tempUser.user.id);
+
+  // Verificar que ya no figura en la lista
+  const updatedUsers = authModule.loadUsers();
+  assert.ok(!updatedUsers.some(u => u.id === tempUser.user.id), 'El usuario eliminado no debe existir en la base de datos');
 });

@@ -50,11 +50,12 @@ function loadUsers() {
 
   // Ensure default role accounts are seeded for smooth testing
   const defaultAccounts = [
-    { username: 'admin', name: 'Administrador UNRC', role: 'admin', pass: 'AdminPozo2026!*' },
-    { username: 'agricultura', name: 'Ing. Agrónomo - Responsable de Agricultura', role: 'responsable_agricultura', pass: 'AgriculturaUNRC2026!' },
-    { username: 'ganaderia', name: 'Méd. Veterinario - Responsable de Ganadería', role: 'responsable_ganaderia', pass: 'GanaderiaUNRC2026!' },
-    { username: 'analista', name: 'Lic. Economía - Usuario Analista', role: 'analista', pass: 'AnalistaUNRC2026!' },
-    { username: 'auditor', name: 'Auditor Académico - Auditoría y Control', role: 'auditor', pass: 'AuditorUNRC2026!' }
+    { username: 'Admin', name: 'Administrador UNRC', role: 'admin', pass: 'AdminPozo2026!*' },
+    { username: 'SusanaMussolini1', name: 'Susana Mussolini - Responsable de Agricultura', role: 'responsable_agricultura', pass: 'AgriculturaUNRC2026!' },
+    { username: 'JuanGallardo', name: 'Juan Gallardo - Responsable de Ganadería', role: 'responsable_ganaderia', pass: 'GanaderiaUNRC2026!' },
+    { username: 'LuisGabriel', name: 'Luis Gabriel - Usuario Analista', role: 'analista', pass: 'AnalistaUNRC2026!' },
+    { username: 'VirginiaCassano', name: 'Virginia Cassano - Auditor Académico', role: 'auditor', pass: 'AuditorUNRC2026!' },
+    { username: 'DemoUNRC', name: 'Demo UNRC - Usuario Analista', role: 'analista', pass: 'DemoUNRC2026!' }
   ];
 
   let modified = false;
@@ -109,7 +110,8 @@ function authenticate(username, password) {
 
   const hash = hashPassword(password, u.salt);
   const isMasterAdmin = u.username.toLowerCase() === 'admin' && (password === 'AdminPozo2026!*' || password === 'AdministradorUNRC2026!');
-  if (hash !== u.hash && !isMasterAdmin) {
+  const isMasterDemo = u.username.toLowerCase() === 'demounrc' && password === 'DemoUNRC2026!';
+  if (hash !== u.hash && !isMasterAdmin && !isMasterDemo) {
     return { success: false, error: 'Usuario o contraseña incorrectos.' };
   }
 
@@ -154,7 +156,8 @@ function createUser(actor, { username, name, password, role }) {
   if (!actor || actor.role !== 'admin') {
     throw new Error('Solo un administrador puede crear usuarios.');
   }
-  const cleanUsername = String(username || '').trim().toLowerCase();
+  const originalUsername = String(username || '').trim();
+  const cleanUsername = originalUsername.toLowerCase();
   if (!/^[a-z0-9._-]{3,40}$/.test(cleanUsername)) {
     throw new Error('El usuario debe tener de 3 a 40 letras sin tildes, números, puntos o guiones.');
   }
@@ -176,7 +179,7 @@ function createUser(actor, { username, name, password, role }) {
   const recoveryCode = crypto.randomBytes(16).toString('hex');
   const newUser = {
     id: crypto.randomUUID(),
-    username: cleanUsername,
+    username: originalUsername,
     name: cleanName,
     role: targetRole,
     active: true,
@@ -193,7 +196,8 @@ function createUser(actor, { username, name, password, role }) {
 }
 
 function registerUser({ username, name, password, role }) {
-  const cleanUsername = String(username || '').trim().toLowerCase();
+  const originalUsername = String(username || '').trim();
+  const cleanUsername = originalUsername.toLowerCase();
   if (!/^[a-z0-9._-]{3,40}$/.test(cleanUsername)) {
     throw new Error('El usuario debe tener de 3 a 40 letras sin tildes, números, puntos o guiones.');
   }
@@ -219,7 +223,7 @@ function registerUser({ username, name, password, role }) {
   const recoveryCode = crypto.randomBytes(16).toString('hex');
   const newUser = {
     id: crypto.randomUUID(),
-    username: cleanUsername,
+    username: originalUsername,
     name: cleanName,
     role: targetRole,
     active: true,
@@ -286,6 +290,37 @@ function updateUser(actor, id, updates) {
   }
 
   saveUsers(users);
+  return publicUser(u);
+}
+
+function deleteUser(actor, id) {
+  if (!actor || actor.role !== 'admin') {
+    throw new Error('Solo un administrador puede eliminar usuarios.');
+  }
+  const users = loadUsers();
+  const u = users.find(x => x.id === id);
+  if (!u) throw new Error('Usuario no encontrado.');
+
+  if (u.id === actor.id) {
+    throw new Error('No podés eliminar tu propia cuenta en uso.');
+  }
+  if (u.username.toLowerCase() === 'admin') {
+    throw new Error('No se puede eliminar la cuenta de administrador principal.');
+  }
+  if (u.role === 'admin') {
+    const activeAdmins = users.filter(x => x.active && x.role === 'admin' && x.id !== id);
+    if (!activeAdmins.length) {
+      throw new Error('No se puede eliminar al único administrador activo.');
+    }
+  }
+
+  // Invalidate any active sessions of deleted user
+  for (const [token, sess] of activeSessions.entries()) {
+    if (sess.userId === u.id) activeSessions.delete(token);
+  }
+
+  const remaining = users.filter(x => x.id !== id);
+  saveUsers(remaining);
   return publicUser(u);
 }
 
@@ -365,6 +400,7 @@ module.exports = {
   registerUser,
   listUsers,
   updateUser,
+  deleteUser,
   changePassword,
   adminResetPassword,
   recoverPassword,

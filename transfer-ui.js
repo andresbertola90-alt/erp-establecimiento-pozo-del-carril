@@ -287,12 +287,26 @@ document.addEventListener('click', async event => {
     try {
       const token = sessionStorage.getItem('unrc-session-token') || localStorage.getItem('unrc-session-token');
       if (token) {
-        window.open('/api/sheets/export-xlsx', '_blank');
+        toast('Generando libro multi-hoja Excel (.xlsx)...', 'info');
+        const res = await fetch('/api/sheets/export-xlsx', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Error al descargar archivo');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `UNRC-Pozo-del-Carril-${new Date().toISOString().slice(0, 10)}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast('Libro Excel exportado con éxito.', 'success');
       } else {
         toast('Iniciá sesión para exportar el libro Excel.');
       }
     } catch (err) {
-      toast(err.message);
+      toast('Error al exportar Excel: ' + err.message);
     }
     return;
   }

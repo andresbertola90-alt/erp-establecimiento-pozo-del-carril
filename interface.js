@@ -4,6 +4,17 @@ const Plan=UNRCAccountPlan;
 const Units = typeof UNRCUnits !== 'undefined' ? UNRCUnits : (typeof window !== 'undefined' ? window.UNRCUnits : null);
 const Semaphore = typeof UNRCSemaphore !== 'undefined' ? UNRCSemaphore : (typeof window !== 'undefined' ? window.UNRCSemaphore : null);
 let db, busy = false;
+if (typeof window !== 'undefined') {
+  try {
+    Object.defineProperty(window, 'db', {
+      get() { return db; },
+      set(val) { db = val; },
+      configurable: true
+    });
+  } catch (_) {
+    window.db = db;
+  }
+}
 const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
 const ui = { view: 'general', tab: {}, from: today().slice(0, 4) + '-01-01', to: today(), search: '', area: 'all', category: 'all', scenario: {}, ledgerAccount: '', currency: 'USD', bnaRate: 1550.00, matrixSubunits: true };
 const $ = s => document.querySelector(s);
@@ -49,7 +60,7 @@ function canAccessView(role, view) {
   }
 
   if (role === 'responsable_ganaderia' || role === 'responsable_cerdos') {
-    const forbidden = ['maiz', 'soja', 'comparador', 'contabilidad', 'administracion', 'admin', 'ajustes', 'auditoria'];
+    const forbidden = ['maiz', 'soja', 'comparador', 'clima', 'contabilidad', 'administracion', 'admin', 'ajustes', 'auditoria'];
     return !forbidden.includes(v);
   }
 
@@ -74,6 +85,7 @@ function canModifyTable(role, table, record) {
   if (role === 'analista' || role === 'auditor') return false;
 
   if (role === 'responsable_agricultura') {
+    if (table === 'rainfalls') return true;
     const forbiddenLivestockTables = ['lots', 'sows', 'births', 'treatments', 'movements'];
     if (forbiddenLivestockTables.includes(table)) return false;
     if (['accounts', 'closings', 'settings', 'users', 'scenarios'].includes(table)) return false;
@@ -83,6 +95,7 @@ function canModifyTable(role, table, record) {
   }
 
   if (role === 'responsable_ganaderia' || role === 'responsable_cerdos') {
+    if (table === 'rainfalls') return false;
     if (['campaigns', 'accounts', 'closings', 'settings', 'users', 'scenarios'].includes(table)) return false;
     if (table === 'sales' && record && record.area && ['agricultura', 'maiz', 'soja'].includes(record.area)) return false;
     if (table === 'costs' && record && record.area && ['agricultura', 'maiz', 'soja'].includes(record.area)) return false;
@@ -147,7 +160,10 @@ const controls = (table, r) => {
   return `<div class="record-tools"><button type="button" class="tool" data-action="edit" data-table="${table}" data-id="${esc(r.id)}" title="Editar registro" aria-label="Editar registro">${icon('pencil')}</button><button type="button" class="tool danger" data-action="cancel" data-table="${table}" data-id="${esc(r.id)}" title="Anular registro" aria-label="Anular registro">${icon('archive-x')}</button></div>`;
 };
 const stateBadge = () => badge('Registrado');
-function metric(label, value, detail = '', color = '', small = false) { return `<article class="metric ${color} ${small ? 'compact' : ''}"><p>${esc(label)}</p><strong class="${typeof value === 'number' && value < 0 ? 'negative' : ''}">${typeof value === 'number' ? money(value) : esc(value)}</strong><small>${esc(detail)}</small></article>`; }
+function metric(label, value, detail = '', color = '', small = false) {
+  const mod = typeof ui !== 'undefined' ? ui.view : 'general';
+  return `<article class="metric ${color} ${small ? 'compact' : ''}" data-kpi-interactive="true" data-kpi-label="${esc(label)}" data-kpi-module="${esc(mod)}" title="Click para ver evolución mensual"><div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:13px"><p style="margin:0">${esc(label)}</p><span class="kpi-interactive-cue" title="Evolución temporal">${typeof icon === 'function' ? icon('trending-up') : '📈'}</span></div><strong class="${typeof value === 'number' && value < 0 ? 'negative' : ''}">${typeof value === 'number' ? money(value) : esc(value)}</strong><small>${esc(detail)}</small></article>`;
+}
 function table(title, heads, rows, tableName, addLabel, actions = '') {
   const user = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
   const role = user?.role || 'admin';
@@ -328,6 +344,7 @@ const NAV = [
   ['ventas','Ventas','handshake'],
   ['existencias','Stock e insumos','warehouse'],
   ['comparador','Destino del cereal','scale'],
+  ['clima','Clima','cloud-sun'],
   ['sanidad','Salud & Sanidad','heart-pulse'],
   ['contabilidad','Contabilidad','book-open'],
   ['informes','Informes y reportes','printer'],
@@ -369,7 +386,8 @@ const NAV_GROUPS = [
     items: [
       ['maiz', 'Maíz', 'wheat'],
       ['soja', 'Soja', 'sprout'],
-      ['comparador', 'Destino del cereal', 'scale']
+      ['comparador', 'Destino del cereal', 'scale'],
+      ['clima', 'Clima', 'cloud-sun']
     ]
   },
   {
@@ -535,7 +553,14 @@ window.addEventListener('resize', () => {
 
 function renderExecutiveKpis() {
   const el = $('#kpiBanner');
-  if (!el || !db) return;
+  if (!el) return;
+  const isSummaryView = ui.view === 'general' || ui.view === 'resumen';
+  if (!isSummaryView || !db) {
+    el.hidden = true;
+    el.innerHTML = '';
+    return;
+  }
+  el.hidden = false;
   const r = D.results(db, ui.from, ui.to);
   const ind = D.indicators(db, ui.from, ui.to);
   const s = r.state;
@@ -560,33 +585,33 @@ function renderExecutiveKpis() {
   const roi = totalExp > 0 ? (r.consolidated / totalExp * 100) : 0;
 
   el.innerHTML = `
-    <article class="kpi-card kpi-green">
-      <div class="kpi-card-head"><span>Ingresos Ventas</span>${icon('trending-up')}</div>
+    <article class="kpi-card kpi-green" data-kpi-interactive="true" data-kpi-key="ingresos_ventas" title="Click para ver evolución mensual">
+      <div class="kpi-card-head"><span>Ingresos Ventas</span><div style="display:flex;align-items:center;gap:6px">${icon('trending-up')}<span class="kpi-interactive-cue" title="Evolución temporal">📈</span></div></div>
       <strong class="kpi-main-val">${revDual.main}</strong>
       <small class="kpi-sub-val">${revDual.sub}</small>
     </article>
-    <article class="kpi-card kpi-rose">
-      <div class="kpi-card-head"><span>Costos Totales</span>${icon('receipt')}</div>
+    <article class="kpi-card kpi-rose" data-kpi-interactive="true" data-kpi-key="costos_totales" title="Click para ver evolución mensual">
+      <div class="kpi-card-head"><span>Costos Totales</span><div style="display:flex;align-items:center;gap:6px">${icon('receipt')}<span class="kpi-interactive-cue" title="Evolución temporal">📈</span></div></div>
       <strong class="kpi-main-val">${expDual.main}</strong>
       <small class="kpi-sub-val">${expDual.sub}</small>
     </article>
-    <article class="kpi-card ${r.consolidated >= 0 ? 'kpi-green' : 'kpi-rose'}">
-      <div class="kpi-card-head"><span>Margen Consolidado</span>${icon('pie-chart')}</div>
+    <article class="kpi-card ${r.consolidated >= 0 ? 'kpi-green' : 'kpi-rose'}" data-kpi-interactive="true" data-kpi-key="margen_consolidado" title="Click para ver evolución mensual">
+      <div class="kpi-card-head"><span>Margen Consolidado</span><div style="display:flex;align-items:center;gap:6px">${icon('pie-chart')}<span class="kpi-interactive-cue" title="Evolución temporal">📈</span></div></div>
       <strong class="kpi-main-val ${r.consolidated < 0 ? 'negative' : ''}">${marginDual.main}</strong>
       <small class="kpi-sub-val">ROI: ${roi >= 0 ? '+' : ''}${number(roi, 1)}% · ${marginDual.sub}</small>
     </article>
-    <article class="kpi-card kpi-dark">
-      <div class="kpi-card-head"><span>Hacienda Total</span>${icon('beef')}</div>
+    <article class="kpi-card kpi-dark" data-kpi-interactive="true" data-kpi-key="hacienda_total" title="Click para ver evolución mensual">
+      <div class="kpi-card-head"><span>Hacienda Total</span><div style="display:flex;align-items:center;gap:6px">${icon('beef')}<span class="kpi-interactive-cue" title="Evolución temporal">📈</span></div></div>
       <strong class="kpi-main-val">${number(totalHeads, 0)} <span style="font-size:0.85rem;font-weight:600">cab</span></strong>
       <small class="kpi-sub-val">Porcinos, bovinos y ovinos</small>
     </article>
-    <article class="kpi-card">
-      <div class="kpi-card-head"><span>Granos en Silo</span>${icon('wheat')}</div>
+    <article class="kpi-card" data-kpi-interactive="true" data-kpi-key="granos_silo" title="Click para ver evolución mensual">
+      <div class="kpi-card-head"><span>Granos en Silo</span><div style="display:flex;align-items:center;gap:6px">${icon('wheat')}<span class="kpi-interactive-cue" title="Evolución temporal">📈</span></div></div>
       <strong class="kpi-main-val">${number(totalGrainTn, 1)} <span style="font-size:0.85rem;font-weight:600">t</span></strong>
       <small class="kpi-sub-val">Maíz y soja acopiados</small>
     </article>
-    <article class="kpi-card">
-      <div class="kpi-card-head"><span>Superficie Operativa</span>${icon('map-pin')}</div>
+    <article class="kpi-card" data-kpi-interactive="true" data-kpi-key="superficie_operativa" title="Click para ver evolución mensual">
+      <div class="kpi-card-head"><span>Superficie Operativa</span><div style="display:flex;align-items:center;gap:6px">${icon('map-pin')}<span class="kpi-interactive-cue" title="Evolución temporal">📈</span></div></div>
       <strong class="kpi-main-val">200 <span style="font-size:0.85rem;font-weight:600">ha</span></strong>
       <small class="kpi-sub-val">5 UN · Pozo del Carril</small>
     </article>
@@ -606,6 +631,16 @@ function renderExecutiveKpis() {
       <small class="kpi-sub-val">${semaforoSub}</small>
     </article>
   `;
+}
+
+function renderWeather() {
+  setTimeout(() => {
+    const el = document.getElementById('weatherViewContainer');
+    if (el && typeof UNRCWeather !== 'undefined') {
+      UNRCWeather.renderWeatherView(el);
+    }
+  }, 10);
+  return `<div id="weatherViewContainer" class="surface weather-container" style="padding:0; background:transparent; border:none"><div style="padding:40px; text-align:center"><p class="muted">Conectando con el servicio meteorológico y registros de lluvia...</p></div></div>`;
 }
 
 function render() {
@@ -650,6 +685,7 @@ function render() {
     ovinos: renderOvines,
     maiz: renderCorn,
     soja: renderSoy,
+    clima: renderWeather,
     modelo: renderModelDoc,
     agricultura: renderAgriculture,
     costos: renderCosts,
@@ -668,8 +704,20 @@ function render() {
     help: () => typeof UNRCHelpUI !== 'undefined' ? UNRCHelpUI.renderHelpCenter() : renderManual(),
     manual: renderManual
   };
-  try { $('#viewRoot').innerHTML = `<div class="view-stack">${views[ui.view] ? views[ui.view]() : renderGeneral()}</div>`; }
-  catch (err) { $('#viewRoot').innerHTML = notice(err.message, 'error'); console.error(err); }
+  try {
+    $('#viewRoot').innerHTML = `<div class="view-stack">${views[ui.view] ? views[ui.view]() : renderGeneral()}</div>`;
+  } catch (err) {
+    $('#viewRoot').innerHTML = notice(err.message, 'error');
+    console.error(err);
+  }
+  if (ui.view === 'clima' && typeof UNRCWeather !== 'undefined') {
+    const el = document.getElementById('weatherViewContainer');
+    if (el) UNRCWeather.renderWeatherView(el);
+  }
+  if (ui.view === 'bovinos' && typeof UNRCBovines !== 'undefined') {
+    const rootEl = document.getElementById('viewRoot');
+    if (rootEl) UNRCBovines.bindBovineEvents(rootEl);
+  }
   if ((ui.view === 'ayuda' || ui.view === 'help') && typeof UNRCHelpUI !== 'undefined') {
     UNRCHelpUI.attachHelpCenterEvents();
   }
@@ -784,7 +832,7 @@ function openForm(t,id='',prefill={}) {
   const dialog=$('#recordDialog'); dialog.dataset.table=t; dialog.dataset.id=id; delete dialog.dataset.importId;
   if(row.sourceImportId) dialog.dataset.importId=row.sourceImportId;
   $('#dialogTitle').textContent=(id?'Editar · ':'')+config.title;
-  $('#dialogKicker').textContent= t === 'treatments' ? 'Farmacovigilancia y Sanidad Animal' : 'Establecimiento Pozo del Carril';
+  $('#dialogKicker').textContent= t === 'treatments' ? 'Farmacovigilancia y Sanidad Animal' : 'Entre Surcos · conectando al agro';
   $('#dialogFields').innerHTML=config.fields.map(f=>formField(f,row[f.name])).join(''); $('#formError').hidden=true;
   $('#recordForm [type="submit"]').disabled=false;
   if(t==='entries')mountJournal(row.lines);
@@ -1853,6 +1901,9 @@ function renderPigs() {
 }
 
 function renderBovines() {
+  if (typeof UNRCBovines !== 'undefined') {
+    return UNRCBovines.renderBovinesModule();
+  }
   const tab = ui.tab.bovinos || 'lotes';
   const s = D.replay(db, ui.to);
   const r = D.results(db, ui.from, ui.to);
@@ -3753,7 +3804,7 @@ function renderAdministration() {
               El alta de nuevas cuentas, blanqueo de contraseñas y asignación de permisos sectoriales son facultades exclusivas de la cuenta <strong>Administrador</strong>.
             </p>
             <button type="button" class="btn primary" data-access-action="switch" style="background:#b91c1c; border-color:#b91c1c">
-              ${icon('users-round')} Iniciar sesión con cuenta Administradora
+              ${icon('users-round')} Iniciar Sesión con cuenta Administradora
             </button>
           </div>
         </div>
@@ -3864,9 +3915,10 @@ function renderAdministration() {
             <button class="btn ghost" type="button" style="padding:4px 8px; font-size:0.75rem" data-access-action="reset" data-id="${person.id}" title="Restablecer contraseña">
               ${icon('key-round')} Restablecer Clave
             </button>
-            <button class="btn ghost" type="button" style="padding:4px 8px; font-size:0.75rem" data-access-action="active" data-id="${person.id}" data-active="${!person.active}" title="${person.active ? 'Desactivar acceso' : 'Habilitar acceso'}">
-              ${icon(person.active ? 'user-round-x' : 'user-round-check')} ${person.active ? 'Desactivar' : 'Activar'}
-            </button>
+            ${person.username.toLowerCase() !== 'admin' ? `
+            <button class="btn ghost danger" type="button" style="padding:4px 8px; font-size:0.75rem; color:#dc2626; border-color:#fca5a5" data-action="delete-user" data-access-action="delete" data-id="${person.id}" data-username="${esc(person.username)}" title="Eliminar usuario permanentemente">
+              ${icon('trash-2')} Eliminar
+            </button>` : ''}
           </div>`
     ]),
     null,
@@ -3878,7 +3930,7 @@ function renderAdministration() {
     configured: false,
     hasSheetId: false,
     sheetUrl: '',
-    title: 'UNRC - Establecimiento Pozo del Carril - Base de Datos ERP',
+    title: 'Entre Surcos · Conectando al Agro - Base de Datos ERP',
     lastSync: null,
     lastStatus: 'Pendiente de sincronización inicial con Google Drive',
     lastError: null,
@@ -3930,7 +3982,7 @@ function renderAdministration() {
       <div class="history-kpis" style="margin-top:14px; margin-bottom:16px">
         <div class="history-kpi-item">
           <span>Planilla Asociada</span>
-          <strong style="font-size:0.92rem; word-break:break-all">${esc(sheetsStatus.title || 'UNRC - Establecimiento Pozo del Carril - Base de Datos ERP')}</strong>
+          <strong style="font-size:0.92rem; word-break:break-all">${esc(sheetsStatus.title || 'Entre Surcos · Conectando al Agro - Base de Datos ERP')}</strong>
           <small>${sheetsStatus.sheetId ? `ID: ${esc(sheetsStatus.sheetId)}` : 'Se creará automáticamente en Drive'}</small>
         </div>
         <div class="history-kpi-item">
@@ -4002,48 +4054,12 @@ function renderAdministration() {
 
 
 function renderModelDoc() {
-    const s = D.replay(db, ui.to);
-  const ind = D.indicators(db, ui.from, ui.to);
-  const cerdosSales = visible('sales').filter(inPeriod).filter(s => s.area === 'cerdos' || s.area === 'porcinos');
-  const cerdosCosts = visible('costs').filter(inPeriod).filter(c => c.area === 'cerdos' || c.area === 'porcinos' || c.area === 'comun');
-  
-  // TP Indicators Calculations
-  const ingresosReales = D.sum(cerdosSales, s => Number(s.gross || 0) || (Number(s.animals || 1) * Number(s.weight || 0) * Number(s.price || 0)));
-  const costosDirectosReales = D.sum(cerdosCosts, c => Number(c.amount || 0));
-  const margenBruto = ingresosReales - costosDirectosReales;
-  const pctSobreCostos = costosDirectosReales > 0 ? (margenBruto / costosDirectosReales * 100) : 0;
-  
-  // Real vs Standard calculations
-  const totalBiomassKg = D.sum(Object.values(s.lots), l => (l.weight || 0) * (l.quantity || 0));
-  const totalHeads = D.sum(Object.values(s.lots), l => l.quantity || 0);
-  const rendReal = totalHeads > 0 ? (totalBiomassKg / totalHeads) : 98.5;
-  const rendStd = 100.0; // 100 kg estándar comercial de capón
-  const desvioRend = rendReal - rendStd;
-  const pctDesvioRend = (desvioRend / rendStd) * 100;
-  
-  // Consumption: Real vs Expected (Dosis técnica * base real)
-  const feedItems = s.feed.filter(f => (f.area === 'cerdos' || f.area === 'porcinos') && inPeriod(f));
-  const consumoRealKg = D.sum(feedItems, f => Number(f.quantity || 0));
-  const baseAnimalDias = totalHeads > 0 ? totalHeads * 30 : 250 * 30; // 30 días base
-  const dosisTecnicaProm = 2.45; // 2.45 kg ración/animal/día estándar
-  const consumoEsperadoKg = consumoRealKg > 0 ? (consumoRealKg * 0.95) : (baseAnimalDias * dosisTecnicaProm);
-  const desvioConsumoKg = consumoRealKg - consumoEsperadoKg;
-  const pctDesvioConsumo = consumoEsperadoKg > 0 ? (desvioConsumoKg / consumoEsperadoKg * 100) : 0;
-
-  // Commercial verification: Capones terminados (90 a 110 kg)
-  const caponSales = cerdosSales.map(v => {
-    const w = Number(v.weight || 0);
-    const inRange = w >= 90 && w <= 110;
-    return { ...v, inRange, weight: w };
-  });
-
-  
-  const body =`
-      <!-- 1.3. Control mediante Semaforización -->
+  const body = `
+      <!-- Control mediante Semaforización -->
       <section class="panel" style="margin-bottom:20px">
         <div class="surface-title">
           <div style="display:flex;align-items:center;gap:10px">
-            <h4>1.3. Control mediante Semaforización</h4>
+            <h4>Control y Criterios de Semaforización Institucional</h4>
             <span class="traffic-light-pill state-green" title="Semáforo operativo">
               <span class="lamp lamp-red"></span>
               <span class="lamp lamp-yellow"></span>
@@ -4101,279 +4117,7 @@ function renderModelDoc() {
         </table>
       </section>
 
-      <!-- 2. Indicadores por Perspectiva -->
-      <section class="panel" style="margin-bottom:24px">
-        <div class="surface-title">
-          <div>
-            <h4>2. Indicadores por Perspectiva (Cuadro de Mando Integral Agropecuario)</h4>
-            <p class="muted">Metodología Balanced Scorecard adaptada a la gestión técnico-económica de Pozo del Carril (200 ha)</p>
-          </div>
-          <span class="badge" style="background:#f1f5f9;color:#334155">4 Perspectivas Estratégicas</span>
-        </div>
-
-        <!-- 2.1. Perspectiva Financiera -->
-        <div class="bsc-perspective-card" style="border-left:4px solid #b83d5a">
-          <div class="bsc-perspective-header">
-            <h5>2.1. Perspectiva Financiera</h5>
-            <span class="badge" style="background:#fdeef1;color:#b83d5a">Rentabilidad y Eficiencia del Capital</span>
-          </div>
-          <div class="bsc-indicator-grid">
-            <div class="bsc-indicator-item">
-              <h6>Control Presupuestario</h6>
-              <div class="bsc-indicator-formula">Desviación (%) = [(Costo Real − Costo Presupuestado) / Costo Presupuestado] × 100</div>
-              <p class="bsc-indicator-desc">Permite detectar variaciones significativas en insumos agrícolas, ración/alimento y sanidad veterinaria respecto a la partida presupuestada.</p>
-            </div>
-            <div class="bsc-indicator-item">
-              <h6>Margen Bruto por Actividad</h6>
-              <div class="bsc-indicator-formula">Margen Bruto = Ingresos Reales − Costos Directos Reales</div>
-              <p class="bsc-indicator-desc">Analizado en $/ha para agricultura y por lote/ciclo en ganadería (porcinos, bovinos y ovinos). Requiere valorizar transferencias internas de grano y forraje a valor de oportunidad sin duplicación comercial.</p>
-            </div>
-            <div class="bsc-indicator-item">
-              <h6>Precio Relativo de Venta</h6>
-              <div class="bsc-indicator-formula">Precio Relativo (%) = (Precio Obtenido / Precio Referencia de Mercado) × 100</div>
-              <p class="bsc-indicator-desc">Evalúa la eficiencia comercial y poder de negociación en ventas de granos (Rosario / Acopio) y hacienda en pie (Liniers / Frigoríficos).</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2.2. Perspectiva de Clientes y Destinatarios -->
-        <div class="bsc-perspective-card" style="border-left:4px solid #0284c7">
-          <div class="bsc-perspective-header">
-            <h5>2.2. Perspectiva de Clientes y Destinatarios</h5>
-            <span class="badge" style="background:#f0f9ff;color:#0284c7">Calidad, Cumplimiento y Ciclo de Caja</span>
-          </div>
-          <div class="bsc-indicator-grid">
-            <div class="bsc-indicator-item">
-              <h6>Calidad Comercial</h6>
-              <div class="bsc-indicator-formula">% Entregas Conformes = (Entregas Aceptadas sin Descuentos / Entregas Totales) × 100</div>
-              <p class="bsc-indicator-desc">Mide el grado de conformidad en balanza y faena (sin descuentos por tipificación, merma excesiva o penalización sanitaria).</p>
-            </div>
-            <div class="bsc-indicator-item">
-              <h6>Cumplimiento de Entregas</h6>
-              <div class="bsc-indicator-formula">% Entregas a Tiempo = (Entregas Puntuales / Entregas Comprometidas) × 100</div>
-              <p class="bsc-indicator-desc">Evalúa la confiabilidad logística en fechas pactadas de carga de capones a frigorífico y contratos agrícolas.</p>
-            </div>
-            <div class="bsc-indicator-item">
-              <h6>Plazo de Cobranza</h6>
-              <div class="bsc-indicator-formula">Plazo Promedio de Cobranza = Días transcurridos entre venta y cobro efectivo</div>
-              <p class="bsc-indicator-desc">Mide la rotación de créditos por ventas y la salud del flujo de fondos ante plazos comerciales habituales (7, 14 o 30 días).</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- 2.3. Perspectiva de Procesos Internos -->
-        <div class="bsc-perspective-card" style="border-left:4px solid #15803d">
-          <div class="bsc-perspective-header">
-            <h5>2.3. Perspectiva de Procesos Internos</h5>
-            <span class="badge" style="background:#f0fdf4;color:#15803d">Eficiencia Biológica y Productiva por Sector</span>
-          </div>
-          <div class="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Sector / Actividad</th>
-                  <th>Indicador Clave</th>
-                  <th>Fórmula / Métrica</th>
-                  <th>Caso / Parámetro Establecido</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><strong>Agricultura</strong></td>
-                  <td>Rendimiento Físico</td>
-                  <td><code>tn/ha = Toneladas cosechadas / Hectáreas cosechadas</code></td>
-                  <td>Ej. 480 tn / 160 ha = <strong>3,00 tn/ha</strong> (30 qq/ha)</td>
-                </tr>
-                <tr>
-                  <td><strong>Agricultura</strong></td>
-                  <td>Pérdidas de Cosecha</td>
-                  <td><code>% Pérdidas = (Pérdida estimada / Producción potencial) × 100</code></td>
-                  <td>Monitoreo en cosechadora · Umbral máximo admisible &lt; 5%</td>
-                </tr>
-                <tr>
-                  <td><strong>Forrajes (Alfalfa)</strong></td>
-                  <td>Costo por Tn MS</td>
-                  <td><code>Costo Total Producción / Toneladas Materia Seca (MS) producida</code></td>
-                  <td>Valoración del forraje base para transferencias a bovinos/ovinos</td>
-                </tr>
-                <tr>
-                  <td><strong>Bovinos de Cría</strong></td>
-                  <td>% Destete</td>
-                  <td><code>(Terneros destetados / Vacas entoradas) × 100</code></td>
-                  <td>Ej. 76 / 100 = <strong>76,0%</strong> (Rango óptimo ≥ 75%)</td>
-                </tr>
-                <tr>
-                  <td><strong>Bovinos de Engorde</strong></td>
-                  <td>Ganancia Diaria Peso (GDP)</td>
-                  <td><code>(Peso Final − Peso Inicial) / Días Engorde</code></td>
-                  <td>Ej. 90 kg ganados / 90 días = <strong>1,00 kg/día</strong> en corral</td>
-                </tr>
-                <tr>
-                  <td><strong>Porcinos y Ovinos</strong></td>
-                  <td>Conversión / Supervivencia</td>
-                  <td><code>Porcinos: kg alimento / kg peso vivo (ej. 2,8). Ovinos: % corderos destetados</code></td>
-                  <td>ICA Porcino objetivo 2,8 · Supervivencia destete ovino Dorper ≥ 90%</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- 2.4. Perspectiva de Aprendizaje y Desarrollo -->
-        <div class="bsc-perspective-card" style="border-left:4px solid #7c3aed">
-          <div class="bsc-perspective-header">
-            <h5>2.4. Perspectiva de Aprendizaje y Desarrollo</h5>
-            <span class="badge" style="background:#f5f3ff;color:#7c3aed">Capital Humano y Vinculación UNRC</span>
-          </div>
-          <div class="bsc-indicator-grid">
-            <div class="bsc-indicator-item">
-              <h6>Capacitación Operativa</h6>
-              <div class="bsc-indicator-formula">Horas anuales de capacitación por trabajador</div>
-              <p class="bsc-indicator-desc">Capacitación continua en sanidad veterinaria, bioseguridad SENASA, manejo de maquinaria y carga digital de registros.</p>
-            </div>
-            <div class="bsc-indicator-item">
-              <h6>Calidad de Datos</h6>
-              <div class="bsc-indicator-formula">% Registros Completos = (Registros Completos / Registros Requeridos) × 100</div>
-              <p class="bsc-indicator-desc">Garantiza datos confiables y trazabilidad sin campos obligatorios omitidos en pesajes, recetas sanitarias y comprobantes.</p>
-            </div>
-            <div class="bsc-indicator-item">
-              <h6>Rol Universitario</h6>
-              <div class="bsc-indicator-formula">Participación estudiantil, prácticas profesionales y ensayos</div>
-              <p class="bsc-indicator-desc">Estudiantes de Contador Público y Agronomía de la UNRC realizando prácticas académicas, investigación aplicada y extensión en campo.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 3. Indicadores del Sistema y Desvíos (Punto 10 del TP) -->
-      <section class="panel">
-        <div class="surface-title">
-          <h4>3. Indicadores del Sistema y Desvíos (Punto 10 del TP)</h4>
-          <span class="badge">Cría/Maternidad · Destete/Recría · Engorde/Terminación</span>
-        </div>
-        <p class="muted">Cálculo de ingresos reales, costos directos reales, margen bruto, porcentaje sobre costos, desvío de rendimiento y desvío de consumo en base a hechos reales registrados (sin precios hipotéticos).</p>
-
-        <!-- Formulas Box -->
-        <div class="formula-box">
-          <h5>Fórmulas Oficiales del Trabajo Práctico:</h5>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:8px">
-            <div>
-              <span class="tp-badge-tag tag-hecho">Ingresos Reales</span>
-              <div class="formula-math">Ingresos = Σ (Ventas reales porcinas)</div>
-            </div>
-            <div>
-              <span class="tp-badge-tag tag-parametrica">Costos Directos Reales</span>
-              <div class="formula-math">Costos Directos = Σ (Costos reales directos)</div>
-            </div>
-            <div>
-              <span class="tp-badge-tag tag-maestra">Margen Bruto</span>
-              <div class="formula-math">Margen Bruto = Ingresos Reales - Costos Directos</div>
-            </div>
-            <div>
-              <span class="tp-badge-tag tag-resultado">% Sobre Costos</span>
-              <div class="formula-math">% Sobre Costos = (Margen Bruto / Costos Directos) × 100</div>
-            </div>
-            <div>
-              <span class="tp-badge-tag tag-parametrica">Desvío de Rendimiento</span>
-              <div class="formula-math">Desvío Rend. = Rendimiento Real - Rendimiento Estándar</div>
-              <div class="formula-desc">% Desvío = ((Real - Estándar) / Estándar) × 100</div>
-            </div>
-            <div>
-              <span class="tp-badge-tag tag-parametrica">Desvío de Consumo</span>
-              <div class="formula-math">Esperado = Dosis Técnica × Base Real</div>
-              <div class="formula-desc">Desvío = Consumo Real - Consumo Esperado</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Indicadores Generales Consolidados -->
-        <h3 style="margin-top:24px;font-size:1.1rem;color:#8c2e47">Consolidado Total: Unidad Ganadería Porcina</h3>
-        <section class="metrics three" style="margin-top:10px">
-          ${metric('Ingresos Reales por Ventas', ingresosReales, 'Suma de liquidaciones reales de capones y cerdos')}
-          ${metric('Costos Directos Reales', costosDirectosReales, 'Alimento, sanidad, MO, fletes y comisiones', 'red')}
-          ${metric('Margen Bruto Real', margenBruto, 'Ingresos reales - Costos directos reales', margenBruto >= 0 ? 'black' : 'red')}
-        </section>
-
-        <section class="metrics three" style="margin-top:10px">
-          <article class="metric ${pctSobreCostos >= 0 ? 'black' : 'red'}">
-            <p>Porcentaje sobre Costos</p>
-            <strong>${number(pctSobreCostos, 1)} %</strong>
-            <small>(Margen Bruto / Costos Directos) × 100</small>
-          </article>
-          <article class="metric ${desvioRend >= 0 ? 'black' : 'red'}">
-            <p>Desvío de Rendimiento (kg/cab)</p>
-            <strong>${desvioRend >= 0 ? '+' : ''}${number(desvioRend, 2)} kg</strong>
-            <small>Real: ${number(rendReal, 1)} kg vs Estándar: ${number(rendStd, 1)} kg (${number(pctDesvioRend, 1)}%)</small>
-          </article>
-          <article class="metric ${desvioConsumoKg <= 0 ? 'black' : 'red'}">
-            <p>Desvío de Consumo de Alimento</p>
-            <strong>${desvioConsumoKg <= 0 ? '' : '+'}${number(desvioConsumoKg, 1)} kg</strong>
-            <small>Real: ${number(consumoRealKg, 0)} kg vs Esperado: ${number(consumoEsperadoKg, 0)} kg (${number(pctDesvioConsumo, 1)}%)</small>
-          </article>
-        </section>
-
-        <!-- Desglose por Subunidad -->
-        <h3 style="margin-top:28px;font-size:1.1rem;color:#8c2e47">Desglose por Subunidad del Ciclo Productivo</h3>
-        
-        <div class="subunidad-card">
-          <div class="subunidad-head">
-            <h4>1. Subunidad Cría / Maternidad</h4>
-            <span class="tp-badge-tag tag-maestra">Fase Biológica: Gestación y Partos</span>
-          </div>
-          <div class="metrics four" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
-            ${metric('Nacidos Vivos', ind.alive || 0, 'Lechones de camadas en período')}
-            ${metric('Lechones Destetados', ind.weaned || 0, 'Camadas cerradas')}
-            ${metric('Supervivencia Predestete', (ind.survival ? number(ind.survival, 1) + ' %' : 'Sin datos'), 'Nacidos vivos vs destetados')}
-            ${metric('Bajas Lactancia', ind.deaths || 0, 'Mortandad predestete', ind.deaths ? 'red' : '')}
-          </div>
-        </div>
-
-        <div class="subunidad-card">
-          <div class="subunidad-head">
-            <h4>2. Subunidad Destete / Recría</h4>
-            <span class="tp-badge-tag tag-parametrica">Fases Nutricionales: Fase 1, Fase 2 y Fase 3</span>
-          </div>
-          <div class="metrics four" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
-            ${metric('GDP Recría', ind.daily ? '+' + number(ind.daily, 2) + ' kg/d' : '+0.52 kg/d', 'Ganancia diaria real')}
-            ${metric('Rendimiento Estándar', '0.50 kg/d', 'Meta técnica establecida')}
-            ${metric('Desvío GDP', '+0.02 kg/d', 'Superó meta técnica (+4%)')}
-            ${metric('Dosis Técnica Ración', '1.15 kg/cab/d', 'Premezcla núcleo + maíz')}
-          </div>
-        </div>
-
-        <div class="subunidad-card">
-          <div class="subunidad-head">
-            <h4>3. Subunidad Engorde / Terminación</h4>
-            <span class="tp-badge-tag tag-hecho">Fases: Desarrollo y Terminación (Venta a Frigorífico)</span>
-          </div>
-          <div class="metrics four" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
-            ${metric('Ventas Reales', cerdosSales.length, 'Comprobantes emitidos')}
-            ${metric('Capones Comercializados', D.sum(cerdosSales, s => Number(s.animals || 0)), 'Cabezas entregadas a frigorífico')}
-            ${metric('Peso Promedio Venta', (cerdosSales.length ? number(D.sum(cerdosSales, s => Number(s.weight || 0)) / cerdosSales.length, 1) + ' kg' : '102.5 kg'), 'Rango objetivo: 90 - 110 kg')}
-            <article class="metric">
-              <p>Rango Comercial Capón</p>
-              <strong>90 a 110 kg</strong>
-              <small>Cumplimiento comercial frigorífico</small>
-            </article>
-          </div>
-        </div>
-
-        <!-- Auditoría de Venta de Capones Terminados (Rango 90 - 110 kg) -->
-        <h3 style="margin-top:24px;font-size:1.1rem;color:#8c2e47">Auditoría Comercial: Ventas de Capones Terminados a Frigorífico</h3>
-        <p class="muted">El rango comercial informado para capones terminados es de <strong>90 a 110 kg</strong>. Se verifica el cumplimiento de peso en cada liquidación.</p>
-        
-        ${caponSales.length ? table('Ventas Reales y Cumplimiento de Rango Comercial',['Fecha','Comprobante','Frigorífico','Cabezas','Peso Promedio','Rango Comercial (90-110 kg)','Precio Real / kg','Importe Bruto','Neto Cobrar'],caponSales.map(s => [
-          date(s.date),
-          esc(s.reference || '-'),
-          esc(nameOf('parties', s.partyId)),
-          number(s.animals, 0),
-          number(s.weight, 1) + ' kg',
-          s.inRange ? `<span class="badge" style="background:#dcfce7;color:#166534">✓ Dentro del Rango (${number(s.weight,1)} kg)</span>` : `<span class="badge" style="background:#fee2e2;color:#991b1b">⚠️ Fuera de Rango (${number(s.weight,1)} kg)</span>`,
-          money(s.price),
-          money(s.gross || (Number(s.animals||1)*Number(s.weight||0)*Number(s.price||0))),
-          money(s.net || s.gross || (Number(s.animals||1)*Number(s.weight||0)*Number(s.price||0)))
-        ])) : notice('No hay liquidaciones de ventas registradas en el período seleccionado. Se verifica el rango teórico 90 a 110 kg.', 'info')}
-      </section>
+      ${renderGeneralSemaphoreDashboard()}
     `;
 
   return heading('Indicadores del Establecimiento', periods(), 'Panel de Indicadores y Métricas Operativas de las 5 Unidades Productivas') + body;
@@ -4461,7 +4205,7 @@ function renderManual() {
     ]]
   ];
 
-  return heading('Manual de Usuario del ERP Agropecuario', '', 'Guía operativa paso a paso para la gestión integral del Establecimiento Pozo del Carril – La Aguada')
+  return heading('Manual de Usuario · Entre Surcos', '', 'Guía operativa paso a paso de Entre Surcos · conectando al agro · Establecimiento Pozo del Carril')
     + `<div class="manual-layout" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:20px; margin-top:20px">
         ${chapters.map(([title, steps]) => `
           <article class="panel" style="margin:0; padding:20px; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05)">
@@ -4709,10 +4453,10 @@ async function handleQuickBna() {
     let rateData = null;
     const token = sessionStorage.getItem('unrc-session-token') || localStorage.getItem('unrc-session-token');
 
-    // 1. Intentar endpoint del servidor /api/rates/bna-live con timeout estricto de 3s
+    // 1. Intentar endpoint del servidor /api/rates/bna-live con timeout estricto de 4s
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
       const res = await fetch('/api/rates/bna-live', {
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
         signal: controller.signal
@@ -4732,7 +4476,7 @@ async function handleQuickBna() {
     if (!rateData || !rateData.sellRate) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
         const resp = await fetch('https://dolarapi.com/v1/dolares/oficial', { signal: controller.signal });
         clearTimeout(timeoutId);
         if (resp.ok) {
@@ -4744,7 +4488,12 @@ async function handleQuickBna() {
               buyRate: Number(apiData.compra),
               rate: Number(apiData.venta),
               source: 'Banco de la Nación Argentina (BNA) · Dólar Billete Vendedor',
-              date: (apiData.fechaActualizacion || today()).slice(0, 10)
+              sourceUrl: 'https://dolarapi.com/v1/dolares/oficial',
+              updatedAt: apiData.fechaActualizacion || new Date().toISOString(),
+              date: (apiData.fechaActualizacion || today()).slice(0, 10),
+              offline: false,
+              isOutdated: false,
+              statusMessage: 'Cotización oficial obtenida en tiempo real de la fuente externa.'
             };
           }
         }
@@ -4753,60 +4502,258 @@ async function handleQuickBna() {
       }
     }
 
-    // 3. Si aún no hay dato, usar cotización guardada o valor de referencia oficial ($ 1.550,00)
+    const isOut = Boolean(rateData?.isOutdated || rateData?.offline);
     const sell = Number(rateData?.sellRate || rateData?.rate) || Number(ui.bnaRate) || 1550;
     const buy = Number(rateData?.buyRate) || (sell - 50);
+    const updatedAt = rateData?.updatedAt || new Date().toISOString();
+    const source = rateData?.source || (isOut ? 'Banco de la Nación Argentina · Último dato conocido' : 'Banco de la Nación Argentina (BNA) · Dólar Billete Vendedor');
+    const statusMsg = rateData?.statusMessage || (isOut 
+      ? 'La fuente externa no está disponible. Se muestra el último dato oficial conocido como referencia histórica.'
+      : 'Cotización oficial BNA en tiempo real.');
 
     ui.bnaRate = sell;
+    ui.bnaBuyRate = buy;
+    ui.bnaRateLastUpdate = updatedAt;
+    ui.bnaRateSource = source;
+    ui.bnaRateIsOutdated = isOut;
+    ui.bnaRateStatusMessage = statusMsg;
 
-    // Actualizar visualmente la interfaz de inmediato
+    // Actualizar visualmente la barra superior
     const bnaEl = $('#bnaRateDisplay');
     if (bnaEl) {
       bnaEl.textContent = '$ ' + number(sell, 2);
-      bnaEl.title = `Tipo de cambio BNA Billete Vendedor: $ ${number(sell, 2)} (Compra: $ ${number(buy, 2)})`;
+      bnaEl.title = `BNA Billete Vendedor: $ ${number(sell, 2)} (Compra: $ ${number(buy, 2)}) · ${isOut ? 'ÚLTIMO DATO CONOCIDO' : 'EN VIVO'} · Actualizado: ${new Date(updatedAt).toLocaleString('es-AR')}`;
     }
 
-    // Intentar registrar en historial de forma no bloqueante
+    const statusTag = $('#bnaStatusTag');
+    if (statusTag) {
+      statusTag.className = 'bna-status-tag ' + (isOut ? 'outdated' : 'live');
+      statusTag.textContent = isOut ? '⚠️ Desactualizado' : '● En vivo';
+      statusTag.title = statusMsg;
+    }
+
+    // Registrar en memoria local (el servidor ya lo persiste en rates.json de forma segura)
     if (db) {
-      try {
-        const next = structuredClone(db);
-        next.rates = next.rates || [];
-        next.rates.push({
-          id: D.uid(),
-          date: rateData?.date || today(),
-          rate: sell,
-          buyRate: buy,
-          sellRate: sell,
-          pair: 'USD/ARS',
-          source: rateData?.source || 'Banco de la Nación Argentina (BNA) · Dólar Billete Vendedor',
-          type: 'Oficial BNA Billete Vendedor',
-          recordedAt: new Date().toISOString()
-        });
-        await persist(next);
-      } catch (errPersist) {
-        console.warn('[BNA] No se pudo persistir cotización localmente:', errPersist.message);
-      }
+      db.rates = db.rates || [];
+      db.rates.push({
+        id: D.uid(),
+        date: rateData?.date || today(),
+        rate: sell,
+        buyRate: buy,
+        sellRate: sell,
+        pair: 'USD/ARS',
+        source: source,
+        type: isOut ? 'Último dato conocido (Offline)' : 'Oficial BNA Billete Vendedor',
+        outdated: isOut,
+        recordedAt: new Date().toISOString()
+      });
     }
 
     render();
-    toast(`✓ Cotización BNA actualizada: $ ${number(sell, 2)} (Dólar Vendedor Billete BNA · Compra: $ ${number(buy, 2)})`);
+
+    if (isOut) {
+      toast(`⚠️ Fuente externa no disponible. Se mantiene el último dato conocido: $ ${number(sell, 2)}`, 'warning');
+    } else {
+      toast(`✓ Cotización BNA en vivo: $ ${number(sell, 2)} (Compra: $ ${number(buy, 2)} · Vendedor: $ ${number(sell, 2)})`, 'success');
+    }
   } catch (err) {
     console.warn('[BNA Error]', err);
-    toast('Cotización oficial BNA mantenida: $ ' + number(ui.bnaRate || 1550, 2));
+    toast('Cotización oficial BNA mantenida: $ ' + number(ui.bnaRate || 1550, 2), 'warning');
   } finally {
-    // Garantizar que la rueda deje de girar en cualquier circunstancia
     document.querySelectorAll('[data-action="quick-bna"], .tool-btn-sm').forEach(b => b.classList.remove('loading'));
     document.querySelectorAll('[data-action="quick-bna"] i, [data-action="quick-bna"] svg, .tool-btn-sm i, .tool-btn-sm svg').forEach(el => el.classList.remove('spinning'));
   }
 }
 
+async function openRateDetailModal() {
+  const dialog = $('#rateDialog');
+  if (!dialog) return;
+
+  const isOut = Boolean(ui.bnaRateIsOutdated);
+  const sell = Number(ui.bnaRate || 1550);
+  const buy = Number(ui.bnaBuyRate || (sell - 50));
+  const spread = Math.max(0, sell - buy);
+  const source = ui.bnaRateSource || 'Banco de la Nación Argentina (BNA) · Dólar Billete';
+  const updatedTime = ui.bnaRateLastUpdate ? new Date(ui.bnaRateLastUpdate).toLocaleString('es-AR') : 'Reciente';
+  const statusMsg = ui.bnaRateStatusMessage || (isOut 
+    ? 'La fuente externa no está disponible en este momento. Se conserva de forma estricta el último dato conocido registrado como referencia oficial sin simulaciones ni valores ficticios.'
+    : 'Cotización oficial obtenida en tiempo real y verificada con las fuentes financieras externas compatibles.');
+
+  let historyRates = [];
+  try {
+    const token = sessionStorage.getItem('unrc-session-token') || localStorage.getItem('unrc-session-token');
+    const res = await fetch('/api/rates', {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
+    if (res.ok) {
+      const data = await res.json();
+      historyRates = (data.rates || []).sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.createdAt||b.recordedAt||'').localeCompare(a.createdAt||a.recordedAt||''));
+    }
+  } catch (err) {
+    historyRates = (db && db.rates) ? db.rates.slice().reverse() : [];
+  }
+
+  dialog.innerHTML = `
+    <div class="dialog-card" style="max-width:760px; padding:0; overflow:hidden">
+      <div class="dialog-head" style="background:#0d1e2b; color:#ffffff; padding:18px 24px">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px">
+            <h3 style="margin:0; font-size:1.25rem; color:#ffffff">Cotización Oficial BNA y Tipo de Cambio</h3>
+            <span class="bna-status-tag ${isOut ? 'outdated' : 'live'}" style="font-size:0.75rem; padding:3px 8px">
+              ${isOut ? '⚠️ Desactualizado · Último dato conocido' : '● Conexión En Vivo y Verificada'}
+            </span>
+          </div>
+          <p style="margin:4px 0 0; font-size:0.8rem; color:#94a3b8">Banco de la Nación Argentina (BNA) · Dólar Billete Vendedor / Comprador</p>
+        </div>
+        <button class="tool" style="background:rgba(255,255,255,0.1); color:#fff; border:0" data-action="close-rate-modal" aria-label="Cerrar">×</button>
+      </div>
+
+      <div style="padding:20px 24px; display:flex; flex-direction:column; gap:16px; max-height:75vh; overflow-y:auto">
+        <div class="notice ${isOut ? 'error' : 'info'}" style="margin:0; padding:12px 16px; border-radius:6px; display:flex; gap:12px; align-items:flex-start">
+          <i data-lucide="${isOut ? 'triangle-alert' : 'circle-check'}" style="width:20px; height:20px; flex-shrink:0; margin-top:2px; color:${isOut ? '#dc2626' : '#087FBD'}"></i>
+          <div style="font-size:0.86rem; line-height:1.5">
+            <strong>${isOut ? 'Fuente Externa Temporalmente No Disponible' : 'Sincronización Exitosa en Tiempo Real'}</strong>
+            <p style="margin:4px 0 0; color:#334155">${esc(statusMsg)}</p>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px">
+          <div style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px; padding:14px; text-align:center">
+            <span style="font-size:0.75rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.04em">Dólar Vendedor (Oficial)</span>
+            <div style="font-size:1.6rem; font-weight:850; color:#0f172a; margin-top:4px; font-variant-numeric:tabular-nums">$ ${number(sell, 2)}</div>
+            <small style="color:#087FBD; font-weight:600; font-size:0.75rem">Base de Valuación ERP</small>
+          </div>
+          <div style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px; padding:14px; text-align:center">
+            <span style="font-size:0.75rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.04em">Dólar Comprador</span>
+            <div style="font-size:1.6rem; font-weight:850; color:#0f172a; margin-top:4px; font-variant-numeric:tabular-nums">$ ${number(buy, 2)}</div>
+            <small style="color:#64748b; font-size:0.75rem">Liquidaciones y compras</small>
+          </div>
+          <div style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:8px; padding:14px; text-align:center">
+            <span style="font-size:0.75rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.04em">Spread Cambiario</span>
+            <div style="font-size:1.6rem; font-weight:850; color:#0f172a; margin-top:4px; font-variant-numeric:tabular-nums">$ ${number(spread, 2)}</div>
+            <small style="color:#64748b; font-size:0.75rem">Brecha Comprador/Vendedor</small>
+          </div>
+        </div>
+
+        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:14px 16px; font-size:0.84rem; display:flex; flex-direction:column; gap:8px">
+          <div style="display:flex; justify-content:space-between">
+            <span style="color:#64748b; font-weight:600">Fecha y Hora de Última Actualización:</span>
+            <strong style="color:#0f172a">${esc(updatedTime)}</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between">
+            <span style="color:#64748b; font-weight:600">Fuente Oficial Conectada:</span>
+            <span style="color:#0f172a; font-weight:600">${esc(source)}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between">
+            <span style="color:#64748b; font-weight:600">Moneda Base / Conversión:</span>
+            <span style="color:#0f172a">Dólares Estadounidenses (USD) a Pesos Argentinos (ARS)</span>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+            <h4 style="margin:0; font-size:0.92rem; font-weight:700; color:#0f172a">Historial Registrado de Cotizaciones (${historyRates.length})</h4>
+            <span style="font-size:0.76rem; color:#64748b">Registro inmutable de trazabilidad contable</span>
+          </div>
+          <div class="table-scroll" style="max-height:190px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:6px">
+            <table style="width:100%; min-width:550px">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th class="num">Comprador</th>
+                  <th class="num">Vendedor</th>
+                  <th>Fuente</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${historyRates.length ? historyRates.slice(0, 15).map(r => `
+                  <tr>
+                    <td>${date(r.date)}</td>
+                    <td><span class="badge neutral" style="font-size:0.72rem">${esc(r.type || 'Oficial')}</span></td>
+                    <td class="num">$ ${number(r.buyRate || r.sellRate, 2)}</td>
+                    <td class="num"><strong>$ ${number(r.sellRate || r.rate, 2)}</strong></td>
+                    <td style="font-size:0.78rem; color:#64748b">${esc(r.source || 'BNA')}</td>
+                  </tr>
+                `).join('') : '<tr><td colspan="5" class="empty">No hay cotizaciones históricas registradas.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px">
+          <button type="button" class="btn primary" data-action="quick-bna" style="gap:6px">
+            <i data-lucide="refresh-cw" style="width:15px; height:15px"></i>
+            Actualizar Cotización en Vivo
+          </button>
+          <button type="button" class="btn ghost" data-action="close-rate-modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  refreshIcons();
+  dialog.showModal();
+}
+
 async function runAction(el) {
   const a=el.dataset.action,t=el.dataset.table,id=el.dataset.id;
   if(a==='close-dialog')return $('#recordDialog').close();
+  if(a==='open-rate-modal') return openRateDetailModal();
+  if(a==='close-rate-modal') return $('#rateDialog').close();
+  if(a==='quick-bna') {
+    await handleQuickBna();
+    if ($('#rateDialog')?.open) openRateDetailModal();
+    return;
+  }
   if(a==='open-lot-card') return openLotDetailModal(el.dataset.lotId);
   if(a==='close-lot-card') return $('#lotDetailDialog').close();
   if(a==='open-alerts') return openAlertsModal();
   if(a==='close-alerts') return $('#alertsDialog').close();
+  if(a==='configure-weather-location') {
+    if (typeof UNRCWeather !== 'undefined') UNRCWeather.openLocationModal();
+    return;
+  }
+  if(a==='new-rainfall') {
+    if (typeof UNRCWeather !== 'undefined') UNRCWeather.openRainfallModal();
+    return;
+  }
+  if(a==='edit-rainfall') {
+    if (typeof UNRCWeather !== 'undefined') UNRCWeather.openRainfallModal(el.dataset.id);
+    return;
+  }
+  if(a==='delete-rainfall') {
+    const ok = await confirmAction({
+      title: '¿Eliminar medición de lluvia?',
+      message: 'Se anulará el registro pluviométrico del establecimiento.',
+      confirmLabel: 'Eliminar lluvia',
+      danger: true
+    });
+    if (!ok) return;
+    await persist(D.cancel(db, 'rainfalls', el.dataset.id));
+    if (typeof UNRCWeather !== 'undefined') {
+      const container = document.getElementById('weatherViewContainer');
+      if (container) UNRCWeather.renderWeatherView(container);
+    }
+    toast('Registro pluviométrico eliminado.');
+    return;
+  }
+  if(a==='refresh-weather') {
+    if (typeof UNRCWeather !== 'undefined') {
+      const container = document.getElementById('weatherViewContainer');
+      if (container) UNRCWeather.renderWeatherView(container, true);
+    }
+    toast('Pronóstico meteorológico actualizado.');
+    return;
+  }
+  if(a==='export-rain-csv') {
+    if (typeof UNRCWeather !== 'undefined' && typeof UNRCWeather.exportRainfallCsv === 'function') {
+      UNRCWeather.exportRainfallCsv(db);
+    } else {
+      exportTable('rainfalls');
+    }
+    return;
+  }
   if(a==='quick-lote') return openForm('lots');
   if(a==='quick-venta') return openForm('sales','',{area:'cerdos',destiny:'faena'});
   if(a==='quick-costo') return openForm('costs','',{area:'cerdos'});
@@ -4832,6 +4779,32 @@ async function runAction(el) {
     await persist(D.cancel(db, 'movements', el.dataset.id));
     render();
     toast('Tratamiento sanitario anulado.');
+    return;
+  }
+  if(a==='delete-user') {
+    const actor = typeof UNRCAuth !== 'undefined' ? UNRCAuth.current : null;
+    if (!actor || actor.role !== 'admin') {
+      toast('Acceso denegado: Solo un administrador puede eliminar usuarios.', 'error');
+      return;
+    }
+    const targetId = el.dataset.id;
+    const targetName = el.dataset.username || 'este usuario';
+    const ok = await confirmAction({
+      title: '¿Eliminar usuario del sistema?',
+      message: `¿Estás seguro de que deseas eliminar permanentemente al usuario "${targetName}"? Se revocarán todas sus sesiones y credenciales de inmediato.`,
+      confirmLabel: 'Eliminar usuario',
+      cancelLabel: 'Volver sin cambios',
+      danger: true
+    });
+    if (!ok) return;
+    try {
+      await UNRCAuth.deleteUser(targetId);
+      toast(`Usuario "${targetName}" eliminado con éxito.`, 'info');
+      await refreshUsers();
+      render();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
     return;
   }
   if(a==='filter-ica') {
@@ -5021,7 +4994,7 @@ async function runAction(el) {
             hasSheetId: true,
             sheetId: data.sheetId,
             sheetUrl: data.sheetUrl,
-            title: data.title || 'UNRC - Establecimiento Pozo del Carril - Base de Datos ERP',
+            title: data.title || 'Entre Surcos · Conectando al Agro - Base de Datos ERP',
             lastSync: data.syncedAt,
             lastStatus: data.message || 'Sincronizado con éxito',
             lastError: null,
@@ -5270,11 +5243,29 @@ document.addEventListener('change',async e=>{
   }
   if(e.target.matches('#csvInput')) {try{await importCsv(e.target.files[0]);}catch(err){toast(err.message);}}
 });
-document.addEventListener('click', e=>{
+window.switchCurrency = function(curr, evt) {
+  if (evt) {
+    if (typeof evt.preventDefault === 'function') evt.preventDefault();
+    if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+  }
+  if (!curr) return;
+  ui.currency = curr;
+  const btnUsd = document.getElementById('btnCurrUSD');
+  const btnArs = document.getElementById('btnCurrARS');
+  if (btnUsd && btnArs) {
+    btnUsd.classList.toggle('active', curr === 'USD');
+    btnArs.classList.toggle('active', curr === 'ARS');
+  }
+  render();
+  if (typeof toast === 'function') {
+    toast(`Moneda activa: ${curr === 'USD' ? 'Dólares estadounidenses (USD)' : 'Pesos argentinos (ARS)'}`, 'info');
+  }
+};
+document.addEventListener('click', e => {
   const currBtn = e.target.closest('.currency-btn');
-  if(currBtn){
-    ui.currency = currBtn.dataset.currency;
-    render();
+  if (currBtn) {
+    e.stopPropagation();
+    window.switchCurrency(currBtn.dataset.currency, e);
   }
 });
 document.addEventListener('input',e=>{
